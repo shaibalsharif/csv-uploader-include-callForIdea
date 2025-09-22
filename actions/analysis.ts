@@ -43,6 +43,17 @@ const extractPsCodeValue = (app: any, possibleSlugs: string[]): string => {
 };
 
 /**
+ * Specifically gets the translated text for a PS Code (Challenge Statement).
+ * @param app - The application object.
+ * @param possibleSlugs - An array of slugs to search for.
+ * @returns The translated text.
+ */
+const getPsCodeTranslation = (app: any, possibleSlugs: string[]): string => {
+  const field = app.raw_fields?.find((f: any) => possibleSlugs.includes(f.slug));
+  return field?.translated?.en_GB || "";
+};
+
+/**
  * Inserts or updates a batch of applications in the database.
  * Uses PostgreSQL's "ON CONFLICT" clause to perform an "upsert".
  * @param applications - An array of application objects to save.
@@ -112,7 +123,7 @@ export async function getAnalyticsFromDB() {
     const lineChartData = Object.entries(growthData)
       .map(([date, count]) => ({ date, count }))
       .sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
-
+    
     let cumulativeTotal = 0;
     const lineChartDataWithTotal = lineChartData.map(item => {
         cumulativeTotal += item.count;
@@ -138,14 +149,50 @@ export async function getAnalyticsFromDB() {
     const psCodeSlugs = ['gkknPnQp', 'jDJaNYGG', 'RjAnzBZJ', 'OJBPQyGP'];
     const psCodeCounts = apps.reduce((acc, app) => {
         const value = extractPsCodeValue(app, psCodeSlugs);
-        acc[value] = (acc[value] || 0) + 1;
+        if (value === "N/A") return acc;
+        if (!acc[value]) {
+            const translation = getPsCodeTranslation(app, psCodeSlugs);
+            acc[value] = { count: 0, translation: translation };
+        }
+        acc[value].count++;
         return acc;
-    }, {} as Record<string, number>);
-    const psCodeData = Object.entries(psCodeCounts).map(([name, value]) => ({ name, value })).sort((a, b) => b.value - a.value);
+    }, {} as Record<string, { count: number, translation: string }>);
+
+    const psCodeData = Object.entries(psCodeCounts)
+        .map(([name, data]) => ({ 
+            name: name, 
+            value: data.count, 
+            translation: data.translation 
+        }))
+        .sort((a, b) => {
+            const regex = /^([a-z]+)-ps-(\d+)$/i;
+            const aMatch = a.name.match(regex);
+            const bMatch = b.name.match(regex);
+            if (aMatch && bMatch) {
+                const aPrefix = aMatch[1];
+                const bPrefix = bMatch[1];
+                if (aPrefix !== bPrefix) return aPrefix.localeCompare(bPrefix);
+                return parseInt(aMatch[2], 10) - parseInt(bMatch[2], 10);
+            }
+            return a.name.localeCompare(b.name);
+        });
 
     const municipalityData = analyzeField("rDkKljjz");
     const ageRangeData = analyzeField("xjzONPwj");
     const genderData = analyzeField("rojNQzOz");
+
+    const ageOrder = [
+        'Below 18',
+        '18 - 25 years',
+        '26 - 35 years',
+        '36 - 45 years',
+        '46 - 55 years',
+        '56 - 65 years',
+        'Above 65'
+    ];
+    ageRangeData.sort((a, b) => {
+        return ageOrder.indexOf(a.name) - ageOrder.indexOf(b.name);
+    });
 
     return {
       lastSyncTime,

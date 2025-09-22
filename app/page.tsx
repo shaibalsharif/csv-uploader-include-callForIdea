@@ -15,6 +15,7 @@ import { FailedSubmissions } from "@/components/failed-submissions"
 import { ApplicationManager } from "@/components/ApplicationManager"
 import Link from "next/link"
 import { BarChart } from "recharts"
+import SpecialButton from "@/components/SpecialButton"
 
 export default function HomePage() {
   const [activeTab, setActiveTab] = useState<"upload" | "history" | "failed" | "manage" | "analysis">("upload")
@@ -66,12 +67,20 @@ export default function HomePage() {
   return (
     <div className="min-h-screen bg-background">
       <div className="container mx-auto py-8 px-4">
-        <div className="mb-8">
-          <h1 className="text-3xl font-bold text-foreground mb-2">GoodGrants CSV Bulk Uploader</h1>
-          <p className="text-muted-foreground">
-            Upload and process CSV files to submit applications to GoodGrants with automated tagging
-          </p>
+        <div className=" flex justify-between items-center ">
+          <div className="mb-8">
+            <h1 className="text-3xl font-bold text-foreground mb-2">GoodGrants CSV Bulk Uploader</h1>
+            <p className="text-muted-foreground">
+              Upload and process CSV files to submit applications to GoodGrants with automated tagging
+            </p>
+          </div>
+        
+          <Link className="cursor-pointer" href="/analysis" passHref>
+            <SpecialButton  label="Open Analysis"/>
+          
+          </Link>
         </div>
+
 
         <div className="flex gap-4 mb-6">
           <Button
@@ -119,12 +128,7 @@ export default function HomePage() {
             <Briefcase className="w-4 h-4" />
             Manage Applications
           </Button>
-          <Link href="/analysis" passHref>
-            <Button variant={activeTab === "analysis" ? "secondary" : "ghost"} className="flex items-center gap-2">
-              <BarChart className="w-4 h-4" /> {/* You may need to import BarChart from lucide-react */}
-              Analysis
-            </Button>
-          </Link>
+
         </div>
 
         {activeTab === "upload" && (

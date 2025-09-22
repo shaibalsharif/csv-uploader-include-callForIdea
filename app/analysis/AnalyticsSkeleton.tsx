@@ -30,13 +30,17 @@ export function AnalyticsSkeleton() {
         <CardContent><Skeleton className="h-[300px] w-full" /></CardContent>
       </Card>
       
-      {/* Sunburst & Pie Charts Skeleton */}
-      <div className="grid gap-6 lg:grid-cols-1">
-        <Card>
-          <CardHeader><Skeleton className="h-6 w-1/3" /></CardHeader>
-          <CardContent><Skeleton className="h-[400px] w-full" /></CardContent>
-        </Card>
-      </div>
+      {/* MODIFIED: Skeleton for the new Stacked Bar Chart component */}
+      <Card>
+        <CardHeader><Skeleton className="h-6 w-1/3" /></CardHeader>
+        <CardContent className="grid gap-8 md:grid-cols-2">
+          <Skeleton className="h-[300px] w-full" />
+          <Skeleton className="h-[300px] w-full" />
+          <Skeleton className="h-[300px] w-full" />
+          <Skeleton className="h-[300px] w-full" />
+        </CardContent>
+      </Card>
+      
        <div className="grid gap-6 lg:grid-cols-2">
         <Card>
           <CardHeader><Skeleton className="h-6 w-1/3" /></CardHeader>

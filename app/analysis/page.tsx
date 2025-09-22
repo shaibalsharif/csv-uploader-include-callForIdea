@@ -10,8 +10,10 @@ import { getAnalyticsFromDB, triggerLiveSync } from "@/actions/analysis";
 import { AnalyticsSkeleton } from "./AnalyticsSkeleton";
 import { FlippableCard } from "./FlippableCard";
 import { SunburstAnalysis } from "./SunburstAnalysis";
-import { Loader2, RefreshCw, AlertCircle } from "lucide-react";
+import { Loader2, RefreshCw, AlertCircle, ArrowLeft } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
+import Link from "next/link";
+
 
 const COLORS = ["#0088FE", "#00C49F", "#FFBB28", "#FF8042", "#AF19FF", "#FF4560", "#6A3E90"];
 
@@ -23,17 +25,17 @@ const COLORS = ["#0088FE", "#00C49F", "#FFBB28", "#FF8042", "#AF19FF", "#FF4560"
  * @returns A formatted date string.
  */
 const formatDateWithOrdinal = (dateString: string): string => {
-    const date = new Date(dateString);
-    const day = date.getUTCDate();
-    let suffix = 'th';
-    if (day % 10 === 1 && day !== 11) suffix = 'st';
-    else if (day % 10 === 2 && day !== 12) suffix = 'nd';
-    else if (day % 10 === 3 && day !== 13) suffix = 'rd';
-    
-    const month = date.toLocaleDateString('en-US', { month: 'short', timeZone: 'UTC' });
-    const year = date.getUTCFullYear();
+  const date = new Date(dateString);
+  const day = date.getUTCDate();
+  let suffix = 'th';
+  if (day % 10 === 1 && day !== 11) suffix = 'st';
+  else if (day % 10 === 2 && day !== 12) suffix = 'nd';
+  else if (day % 10 === 3 && day !== 13) suffix = 'rd';
 
-    return `${day}${suffix} ${month}, ${year}`;
+  const month = date.toLocaleDateString('en-US', { month: 'short', timeZone: 'UTC' });
+  const year = date.getUTCFullYear();
+
+  return `${day}${suffix} ${month}, ${year}`;
 };
 
 /**
@@ -61,6 +63,7 @@ const CustomLegend = ({ payload }: any) => {
 /**
  * Renders the pie chart graphic with refined styling.
  */
+// MODIFIED: PieChartGraphic now has a larger outerRadius
 const PieChartGraphic = ({ data }: { data: { name: string, value: number }[] }) => (
   <ResponsiveContainer width="100%" height={350}>
     <PieChart>
@@ -69,20 +72,22 @@ const PieChartGraphic = ({ data }: { data: { name: string, value: number }[] }) 
         cx="50%"
         cy="45%"
         labelLine={false}
-        outerRadius={80}
+        // MODIFIED: Increased pie size
+        outerRadius={100}
         fill="#8884d8"
         dataKey="value"
         nameKey="name"
         label={({ cx, cy, midAngle, innerRadius, outerRadius, percent }) => {
-            const radius = innerRadius + (outerRadius - innerRadius) * 0.5;
-            const x = cx + radius * Math.cos(-midAngle * (Math.PI / 180));
-            const y = cy + radius * Math.sin(-midAngle * (Math.PI / 180));
-            if ((percent * 100) < 5) return null;
-            return (
-                <text x={x} y={y} fill="white" textAnchor="middle" dominantBaseline="central" className="text-xs font-bold">
-                    {`${(percent * 100).toFixed(0)}%`}
-                </text>
-            );
+          // Increased radius for label positioning to match new outerRadius
+          const radius = innerRadius + (outerRadius - innerRadius) * 0.6;
+          const x = cx + radius * Math.cos(-midAngle * (Math.PI / 180));
+          const y = cy + radius * Math.sin(-midAngle * (Math.PI / 180));
+          if ((percent * 100) < 5) return null;
+          return (
+            <text x={x} y={y} fill="white" textAnchor="middle" dominantBaseline="central" className="text-sm font-bold">
+              {`${(percent * 100).toFixed(0)}%`}
+            </text>
+          );
         }}
       >
         {data.map((entry, index) => <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />)}
@@ -97,29 +102,29 @@ const PieChartGraphic = ({ data }: { data: { name: string, value: number }[] }) 
  * Renders the data table for the back of the flippable cards.
  */
 const TableGraphic = ({ data }: { data: { name: string, value: number }[] }) => (
-    <div className="max-h-[250px] overflow-y-auto border rounded-md">
-        <Table>
-            <TableHeader><TableRow><TableHead>Value</TableHead><TableHead className="text-right">Count</TableHead></TableRow></TableHeader>
-            <TableBody>{data.map((item, index) => <TableRow key={`${item.name}-${index}`}><TableCell className="font-medium">{item.name}</TableCell><TableCell className="text-right">{item.value}</TableCell></TableRow>)}</TableBody>
-        </Table>
-    </div>
+  <div className="max-h-[250px] overflow-y-auto border rounded-md">
+    <Table>
+      <TableHeader><TableRow><TableHead>Value</TableHead><TableHead className="text-right">Count</TableHead></TableRow></TableHeader>
+      <TableBody>{data.map((item, index) => <TableRow key={`${item.name}-${index}`}><TableCell className="font-medium">{item.name}</TableCell><TableCell className="text-right">{item.value}</TableCell></TableRow>)}</TableBody>
+    </Table>
+  </div>
 );
 
 /**
  * Renders a custom tooltip for the line chart, showing daily and cumulative totals.
  */
 const CustomLineChartTooltip = ({ active, payload, label }: any) => {
-    if (active && payload && payload.length) {
-        const data = payload[0].payload;
-        return (
-            <div className="p-3 bg-background border rounded-md shadow-lg">
-                <p className="font-bold text-sm">{formatDateWithOrdinal(label)}</p>
-                <p className="text-sm text-primary">Submissions this day: <strong>{data.count}</strong></p>
-                <p className="text-sm text-muted-foreground">Total to date: <strong>{data.total}</strong></p>
-            </div>
-        );
-    }
-    return null;
+  if (active && payload && payload.length) {
+    const data = payload[0].payload;
+    return (
+      <div className="p-3 bg-background border rounded-md shadow-lg">
+        <p className="font-bold text-sm">{formatDateWithOrdinal(label)}</p>
+        <p className="text-sm text-primary">Submissions this day: <strong>{data.count}</strong></p>
+        <p className="text-sm text-muted-foreground">Total to date: <strong>{data.total}</strong></p>
+      </div>
+    );
+  }
+  return null;
 };
 
 // --- Main Page Component ---
@@ -144,7 +149,7 @@ export default function AnalysisPage() {
   const handleSyncClick = async () => {
     setIsSyncing(true);
     toast({ title: "Sync Started", description: "Fetching latest data from GoodGrants. This may take a while." });
-    
+
     try {
       const result = await triggerLiveSync();
       if (result.success) {
@@ -159,15 +164,15 @@ export default function AnalysisPage() {
       setIsSyncing(false);
     }
   };
-  
+
   if (isLoading) {
     return <div className="p-6"><AnalyticsSkeleton /></div>;
   }
-  
+
   if (data?.error || !data) {
     return <div className="text-center text-red-500 mt-10 p-6">Error loading dashboard. Please try again.</div>
   }
-  
+
   const lastSyncDate = data.lastSyncTime ? new Date(data.lastSyncTime) : null;
   const timeSinceSync = lastSyncDate ? `about ${Math.round((new Date().getTime() - lastSyncDate.getTime()) / 60000)} minutes ago` : 'never';
   const topMunicipalities = data.municipalityData?.slice(0, 4) || [];
@@ -175,14 +180,22 @@ export default function AnalysisPage() {
   return (
     <div className="p-6 space-y-6 bg-muted/20 min-h-screen">
       <header className="flex flex-wrap gap-4 justify-between items-center">
-        <div>
-          <h1 className="text-3xl font-bold">Applications Analysis</h1>
-          <p className="text-muted-foreground">Displaying data from the local database.</p>
+        <div className="flex items-center gap-4">
+          <Link href="/">
+            <Button variant="outline" size="icon">
+              <ArrowLeft className="h-4 w-4" />
+              <span className="sr-only">Back to Home</span>
+            </Button>
+          </Link>
+          <div>
+            <h1 className="text-3xl font-bold">Applications Analysis</h1>
+            <p className="text-muted-foreground">Displaying data from the local database.</p>
+          </div>
         </div>
         <div className="border p-3 rounded-lg bg-background flex items-center space-x-4">
           <div className="text-right">
-             <p className="text-sm font-medium">Data Last Updated</p>
-             <p className="text-sm text-muted-foreground font-mono" title={lastSyncDate?.toLocaleString()}>{lastSyncDate ? timeSinceSync : 'N/A'}</p>
+            <p className="text-sm font-medium">Data Last Updated</p>
+            <p className="text-sm text-muted-foreground font-mono" title={lastSyncDate?.toLocaleString()}>{lastSyncDate ? timeSinceSync : 'N/A'}</p>
           </div>
           <Button onClick={handleSyncClick} disabled={isSyncing}>
             {isSyncing ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <RefreshCw className="mr-2 h-4 w-4" />}
@@ -194,9 +207,9 @@ export default function AnalysisPage() {
       <main>
         {data.isEmpty ? (
           <Card className="text-center p-10">
-              <AlertCircle className="mx-auto h-12 w-12 text-muted-foreground" />
-              <CardTitle className="mt-4">No Data Found</CardTitle>
-              <CardDescription className="mt-2">Your local database is empty. Click "Sync Now" to populate it with data from GoodGrants.</CardDescription>
+            <AlertCircle className="mx-auto h-12 w-12 text-muted-foreground" />
+            <CardTitle className="mt-4">No Data Found</CardTitle>
+            <CardDescription className="mt-2">Your local database is empty. Click "Sync Now" to populate it with data from GoodGrants.</CardDescription>
           </Card>
         ) : (
           <div className="space-y-6">
@@ -205,24 +218,24 @@ export default function AnalysisPage() {
                 <CardHeader className="pb-2"><CardTitle className="text-base font-medium">Total Applications</CardTitle></CardHeader>
                 <CardContent><p className="text-2xl font-bold">{data.totalApplications}</p></CardContent>
               </Card>
-              {topMunicipalities.map((muni: {name: string, value: number}) => (
+              {topMunicipalities.map((muni: { name: string, value: number }) => (
                 <Card key={muni.name} className="transition-all duration-300 hover:shadow-xl">
                   <CardHeader className="pb-2"><CardTitle className="text-base font-medium">{muni.name}</CardTitle></CardHeader>
                   <CardContent><p className="text-2xl font-bold">{muni.value}</p></CardContent>
                 </Card>
               ))}
             </div>
-            
+
             <Card className="transition-all duration-300 hover:shadow-xl">
               <CardHeader><CardTitle>Application Growth Over Time</CardTitle></CardHeader>
               <CardContent>
                 <ResponsiveContainer width="100%" height={300}>
                   <LineChart data={data.lineChartData} margin={{ top: 5, right: 20, left: -10, bottom: 5 }}>
                     <CartesianGrid strokeDasharray="3 3" />
-                    <XAxis 
+                    <XAxis
                       dataKey="date"
                       tickFormatter={formatDateWithOrdinal}
-                      interval={4} 
+                      interval={4}
                     />
                     <YAxis allowDecimals={false} />
                     <Tooltip content={<CustomLineChartTooltip />} />
@@ -232,10 +245,10 @@ export default function AnalysisPage() {
                 </ResponsiveContainer>
               </CardContent>
             </Card>
-            
+
             <SunburstAnalysis apps={data.rawApps} />
-            
-            <div className="grid gap-6 lg:grid-cols-2">
+
+            <div className="grid gap-8 lg:grid-cols-2">
               <FlippableCard title="Division by Category" chartComponent={<PieChartGraphic data={data.categoryPieData} />} tableComponent={<TableGraphic data={data.categoryPieData} />} />
               <FlippableCard title="Division by Municipality" chartComponent={<PieChartGraphic data={data.municipalityData} />} tableComponent={<TableGraphic data={data.municipalityData} />} />
               <FlippableCard title="Division by PS Code" chartComponent={<PieChartGraphic data={data.psCodeData} />} tableComponent={<TableGraphic data={data.psCodeData} />} />

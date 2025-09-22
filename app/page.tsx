@@ -6,15 +6,16 @@ import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group"
-import { Upload, FileText, Settings, Database, AlertCircle, XCircle } from "lucide-react"
+import { Upload, FileText, Settings, Database, AlertCircle, XCircle, Briefcase } from "lucide-react"
 import { Alert, AlertDescription } from "@/components/ui/alert"
 import { CSVUploader } from "@/components/csv-uploader"
 import { ProcessingDashboard } from "@/components/processing-dashboard"
 import { BatchHistory } from "@/components/batch-history"
 import { FailedSubmissions } from "@/components/failed-submissions"
+import { ApplicationManager } from "@/components/ApplicationManager"
 
 export default function HomePage() {
-  const [activeTab, setActiveTab] = useState<"upload" | "history" | "failed">("upload")
+  const [activeTab, setActiveTab] = useState<"upload" | "history" | "failed" | "manage">("upload")
   const [csvFile, setCsvFile] = useState<File | null>(null)
   const [processingMode, setProcessingMode] = useState<"handsfree" | "interruption">("handsfree")
   const [isCompleted, setIsCompleted] = useState(false)
@@ -72,7 +73,7 @@ export default function HomePage() {
 
         <div className="flex gap-4 mb-6">
           <Button
-            variant={activeTab === "upload" ? "default" : "outline"}
+            variant={activeTab === "upload" ? "secondary" : "ghost"}
             onClick={() => {
               setActiveTab("upload");
               handleReset();
@@ -83,7 +84,7 @@ export default function HomePage() {
             Upload & Process
           </Button>
           <Button
-            variant={activeTab === "history" ? "default" : "outline"}
+            variant={activeTab === "history" ? "secondary" : "ghost"}
             onClick={() => {
               setActiveTab("history");
               handleReset();
@@ -94,7 +95,7 @@ export default function HomePage() {
             Batch History
           </Button>
           <Button
-            variant={activeTab === "failed" ? "default" : "outline"}
+            variant={activeTab === "failed" ? "secondary" : "ghost"}
             onClick={() => {
               setActiveTab("failed");
               handleReset();
@@ -103,6 +104,18 @@ export default function HomePage() {
           >
             <XCircle className="w-4 h-4" />
             Failed Submissions
+          </Button>
+
+          <Button
+            variant={activeTab === "manage" ? "secondary" : "ghost"}
+            onClick={() => {
+              setActiveTab("manage");
+              handleReset();
+            }}
+            className="flex items-center gap-2"
+          >
+            <Briefcase className="w-4 h-4" />
+            Manage Applications
           </Button>
         </div>
 
@@ -182,6 +195,7 @@ export default function HomePage() {
 
         {activeTab === "history" && <BatchHistory />}
         {activeTab === "failed" && <FailedSubmissions />}
+        {activeTab === "manage" && <ApplicationManager config={config} />}
       </div>
     </div>
   )

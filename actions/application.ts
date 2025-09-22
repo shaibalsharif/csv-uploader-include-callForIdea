@@ -1,39 +1,137 @@
 "use server";
 
-const API_VERSION_HEADER = "application/vnd.Creative Force.v2.3+json";
 const API_BASE_URL = "https://api.cr4ce.com";
-const SEASON_SLUG = "VgbzlaOa";
+const API_VERSION_HEADER = "application/vnd.Creative Force.v2.3+json";
+const SEASON_SLUG = "VgbzlaOa"; 
+
+function sleep(ms: number) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+async function safeFetch(url: string, options: RequestInit, retries = 3, delay = 1000): Promise<Response> {
+  try {
+    const res = await fetch(url, options);
+    if (res.status === 429 && retries > 0) {
+      console.warn(`Rate limited. Retrying in ${delay}ms...`);
+      await sleep(delay);
+      return safeFetch(url, options, retries - 1, delay * 2);
+    }
+    return res;
+  } catch (err) {
+    if (retries > 0) {
+      console.warn(`Request failed. Retrying in ${delay}ms...`, err);
+      await sleep(delay);
+      return safeFetch(url, options, retries - 1, delay * 2);
+    }
+    throw err;
+  }
+}
+
+async function apiRequest(endpoint: string, method: 'GET' | 'POST' | 'PUT' | 'DELETE', apiKey: string, body?: any) {
+  const options: RequestInit = {
+    method,
+    headers: {
+      'x-api-key': apiKey,
+      'Accept': API_VERSION_HEADER,
+      'x-api-language': 'en_GB',
+      'Content-Type': 'application/json',
+    },
+  };
+
+  if (body) {
+    options.body = JSON.stringify(body);
+  }
+
+  const response = await safeFetch(`${API_BASE_URL}${endpoint}`, options);
+
+  if (!response.ok) {
+    const errorData = await response.text();
+    console.error(`API Error: ${response.status} - ${errorData}`);
+    throw new Error(`API request failed: ${response.status}`);
+  }
+  
+  if (response.status === 204) {
+    return { success: true };
+  }
+
+  return response.json();
+}
+
+// --- Types ---
+export interface FetchParams {
+  page: number;
+  per_page: number;
+  order: string;
+  dir: 'asc' | 'desc';
+  archived: 'only' | 'none';
+  deleted: 'only' | 'none';
+}
+
+interface Filters {
+  title: string;
+  tags: string[];   // FIXED: tags is now array
+  status: string;
+  date_after: string;
+  date_before: string;
+}
+
+// --- API Actions ---
+export async function getApplications(config: { apiKey: string }, params: FetchParams, filters: Filters) {
+  const query = new URLSearchParams({
+    page: params.page.toString(),
+    per_page: params.per_page.toString(),
+    order: params.order,
+    dir: params.dir,
+    archived: params.archived,
+    deleted: params.deleted,
+  });
+
+  if (filters.title) query.append('title', filters.title);
+  if (filters.status) query.append('status', filters.status);
+
+  if (filters.date_after) query.append('updated_at[after]', new Date(filters.date_after).toISOString());
+  if (filters.date_before) query.append('updated_at[before]', new Date(filters.date_before).toISOString());
+
+  // ✅ FIX: tags as array, not joined string
+  if (Array.isArray(filters.tags)) {
+    filters.tags.forEach(tag => query.append('tag', tag));
+  }
+
+  return apiRequest(`/application?${query.toString()}`, 'GET', config.apiKey);
+}
+
+export async function getApplicationDetails(config: { apiKey: string }, slug: string) {
+  return apiRequest(`/application/${slug}`, 'GET', config.apiKey);
+}
+
+export async function archiveApplication(config: { apiKey: string }, slug: string) {
+  return apiRequest(`/application/${slug}/archive`, 'PUT', config.apiKey);
+}
+
+export async function unarchiveApplication(config: { apiKey: string }, slug: string) {
+  return apiRequest(`/application/${slug}/archive`, 'DELETE', config.apiKey);
+}
+
+export async function deleteApplication(config: { apiKey: string }, slug: string) {
+  return apiRequest(`/application/${slug}`, 'DELETE', config.apiKey);
+}
+
+export async function restoreApplication(config: { apiKey: string }, slug: string) {
+  return apiRequest(`/application/${slug}/restore`, 'PUT', config.apiKey);
+}
 
 export async function submitApplication(config: any, title: string, categorySlug: string, applicationData: any) {
   const { apiKey, formSlug, applicantSlug } = config;
-
   const payload = {
     applicant: applicantSlug,
     season: SEASON_SLUG,
     form: formSlug,
     status: "submitted",
-    title: title, // Title is a top-level field
-    category: categorySlug, // Category is a top-level field
+    title: title,
+    category: categorySlug,
     application_fields: applicationData,
   };
-
-  const response = await fetch(`${API_BASE_URL}/application`, {
-    method: "POST",
-    headers: {
-      "x-api-key": apiKey,
-      "Content-Type": "application/json",
-      "Accept": API_VERSION_HEADER,
-    },
-    body: JSON.stringify(payload),
-  });
-
-  if (!response.ok) {
-    const errorData = await response.text();
-    throw new Error(`Creative Force API error: ${response.status} - ${errorData}`);
-  }
-
-  const result = await response.json();
-  return result;
+  return apiRequest('/application', 'POST', apiKey, payload);
 }
 
 export async function addTags(config: any, appSlug: string, tags: string[]) {
@@ -45,20 +143,12 @@ export async function addTags(config: any, appSlug: string, tags: string[]) {
 
   for (const tag of tags) {
     const encodedTag = encodeURIComponent(tag);
-    const response = await fetch(`${API_BASE_URL}/application/${appSlug}/tag/${encodedTag}`, {
-      method: "PUT",
-      headers: {
-        "x-api-key": apiKey,
-        "Accept": API_VERSION_HEADER,
-        "Content-Type": "application/json",
-      },
-    });
-
-    if (!response.ok) {
-      const errorData = await response.text();
-      throw new Error(`Failed to add tag "${tag}": ${response.status} - ${errorData}`);
-    }
+    await apiRequest(`/application/${appSlug}/tag/${encodedTag}`, 'PUT', apiKey);
+    await sleep(500);
   }
 
-  return { success: true, message: `Successfully added all ${tags.length} tags.` };
+  return {
+    success: true,
+    message: `Successfully added all ${tags.length} tags.`,
+  };
 }

@@ -13,9 +13,11 @@ import { ProcessingDashboard } from "@/components/processing-dashboard"
 import { BatchHistory } from "@/components/batch-history"
 import { FailedSubmissions } from "@/components/failed-submissions"
 import { ApplicationManager } from "@/components/ApplicationManager"
+import Link from "next/link"
+import { BarChart } from "recharts"
 
 export default function HomePage() {
-  const [activeTab, setActiveTab] = useState<"upload" | "history" | "failed" | "manage">("upload")
+  const [activeTab, setActiveTab] = useState<"upload" | "history" | "failed" | "manage" | "analysis">("upload")
   const [csvFile, setCsvFile] = useState<File | null>(null)
   const [processingMode, setProcessingMode] = useState<"handsfree" | "interruption">("handsfree")
   const [isCompleted, setIsCompleted] = useState(false)
@@ -117,6 +119,12 @@ export default function HomePage() {
             <Briefcase className="w-4 h-4" />
             Manage Applications
           </Button>
+          <Link href="/analysis" passHref>
+            <Button variant={activeTab === "analysis" ? "secondary" : "ghost"} className="flex items-center gap-2">
+              <BarChart className="w-4 h-4" /> {/* You may need to import BarChart from lucide-react */}
+              Analysis
+            </Button>
+          </Link>
         </div>
 
         {activeTab === "upload" && (

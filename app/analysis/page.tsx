@@ -11,8 +11,10 @@ import { getAnalyticsFromDB, triggerLiveSync } from "@/actions/analysis";
 import { AnalyticsSkeleton } from "./AnalyticsSkeleton";
 import { FlippableCard } from "./FlippableCard";
 import { StackedBarAnalysis } from "./StackedBarAnalysis";
-import { Loader2, RefreshCw, AlertCircle, ArrowLeft } from "lucide-react";
+import { Loader2, RefreshCw, AlertCircle, ArrowLeft, FileDown } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
+import { jsPDF } from 'jspdf';
+import html2canvas from 'html2canvas';
 
 const COLORS = ["#0088FE", "#00C49F", "#FFBB28", "#FF8042", "#AF19FF", "#FF4560", "#6A3E90"];
 
@@ -167,6 +169,7 @@ export default function AnalysisPage() {
   const [data, setData] = useState<any>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [isSyncing, setIsSyncing] = useState(false);
+  const [isExporting, setIsExporting] = useState(false);
   const { toast } = useToast();
 
   /**
@@ -207,6 +210,52 @@ export default function AnalysisPage() {
     }
   };
 
+  /**
+   * Handles the click of the "Export to PDF" button.
+   */
+  const handleExportPdf = async () => {
+    setIsExporting(true);
+    toast({ title: "PDF Export Started", description: "Generating your analytics report. This may take a moment." });
+
+    const input = document.getElementById('analytics-dashboard');
+    if (!input) {
+      toast({ title: "Error", description: "Could not find dashboard content.", variant: "destructive" });
+      setIsExporting(false);
+      return;
+    }
+
+    try {
+      const canvas = await html2canvas(input);
+      const imgData = canvas.toDataURL('image/png');
+      const pdf = new jsPDF('p', 'mm', 'a4');
+      const imgWidth = 210; // A4 width in mm
+      const pageHeight = 295; // A4 height in mm
+      const imgHeight = canvas.height * imgWidth / canvas.width;
+      let heightLeft = imgHeight;
+      let position = 0;
+
+      // Add the image and handle pagination for long content
+      pdf.addImage(imgData, 'PNG', 0, position, imgWidth, imgHeight);
+      heightLeft -= pageHeight;
+
+      while (heightLeft >= 0) {
+        position = heightLeft - imgHeight;
+        pdf.addPage();
+        pdf.addImage(imgData, 'PNG', 0, position, imgWidth, imgHeight);
+        heightLeft -= pageHeight;
+      }
+
+      pdf.save('analytics-report.pdf');
+      toast({ title: "PDF Export Complete", description: "Your PDF report has been downloaded." });
+    } catch (error) {
+      console.error("PDF generation failed:", error);
+      toast({ title: "Export Failed", description: "There was an issue generating the PDF.", variant: "destructive" });
+    } finally {
+      setIsExporting(false);
+    }
+  };
+
+
   // Render loading skeleton while fetching initial data
   if (isLoading) {
     return <div className="p-6"><AnalyticsSkeleton /></div>;
@@ -246,30 +295,37 @@ export default function AnalysisPage() {
             <p className="text-muted-foreground">Displaying data from the local database.</p>
           </div>
         </div>
-        <div className="border p-3 rounded-lg bg-background flex items-center space-x-4 group">
-          <div className="text-right group">
-            <p className="text-sm font-medium">Data Last Updated</p>
-            <p
-              className="text-sm text-muted-foreground font-mono group-hover:hidden"
-            // title={hoverTextTime}
-            >
-              {displayTextTime}
-            </p>
-            <p
-              className="hidden group-hover:block text-sm text-muted-foreground font-mono"
-            // title={hoverTextTime}
-            >
-              {hoverTextTime}
-            </p>
-          </div>
-          <Button onClick={handleSyncClick} disabled={isSyncing} className="cursor-pointer">
-            {isSyncing ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <RefreshCw className="mr-2 h-4 w-4" />}
-            {isSyncing ? "Syncing..." : "Sync Now"}
+        <div className="flex items-center space-x-4">
+          <Button onClick={handleExportPdf} disabled={isExporting || isSyncing} className="cursor-pointer">
+            {isExporting ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <FileDown className="mr-2 h-4 w-4" />}
+            {isExporting ? "Exporting..." : "Export to PDF"}
           </Button>
+          <div className="border p-3 rounded-lg bg-background flex items-center space-x-4 group">
+            <div className="text-right group">
+              <p className="text-sm font-medium">Data Last Updated</p>
+              <p
+                className="text-sm text-muted-foreground font-mono group-hover:hidden"
+              // title={hoverTextTime}
+              >
+                {displayTextTime}
+              </p>
+              <p
+                className="hidden group-hover:block text-sm text-muted-foreground font-mono"
+              // title={hoverTextTime}
+              >
+                {hoverTextTime}
+              </p>
+            </div>
+            <Button onClick={handleSyncClick} disabled={isSyncing || isExporting} className="cursor-pointer">
+              {isSyncing ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <RefreshCw className="mr-2 h-4 w-4" />}
+              {isSyncing ? "Syncing..." : "Sync Now"}
+            </Button>
+          </div>
         </div>
       </header>
 
-      <main>
+      {/* The new id is added here to allow html2canvas to select this element */}
+      <main id="analytics-dashboard">
         {data.isEmpty ? (
           <Card className="text-center p-10">
             <AlertCircle className="mx-auto h-12 w-12 text-muted-foreground" />

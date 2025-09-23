@@ -1,8 +1,8 @@
 "use client";
 
-import { useState, useEffect, ReactNode } from "react";
+import { useState, useEffect, ReactNode, useRef } from "react";
 import Link from "next/link";
-import { LineChart, Line, PieChart, Pie, Cell, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from "recharts";
+import { LineChart, Line, PieChart, Pie, Cell, XAxis, YAxis, CartesianGrid, Tooltip, Legend, BarChart, Bar, ResponsiveContainer } from "recharts";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Button } from "@/components/ui/button";
@@ -10,11 +10,10 @@ import { useToast } from "@/components/ui/use-toast";
 import { getAnalyticsFromDB, triggerLiveSync } from "@/actions/analysis";
 import { AnalyticsSkeleton } from "./AnalyticsSkeleton";
 import { FlippableCard } from "./FlippableCard";
-import { StackedBarAnalysis } from "./StackedBarAnalysis";
+import { StackedBarAnalysis, processStackedBarData } from "./StackedBarAnalysis"; // Import the data function
 import { Loader2, RefreshCw, AlertCircle, ArrowLeft, FileDown } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
-import { jsPDF } from 'jspdf';
-import html2canvas from 'html2canvas';
+import html2canvas from 'html2canvas-pro';
 
 const COLORS = ["#0088FE", "#00C49F", "#FFBB28", "#FF8042", "#AF19FF", "#FF4560", "#6A3E90"];
 
@@ -171,6 +170,7 @@ export default function AnalysisPage() {
   const [isSyncing, setIsSyncing] = useState(false);
   const [isExporting, setIsExporting] = useState(false);
   const { toast } = useToast();
+  const hiddenChartRef = useRef<HTMLDivElement>(null);
 
   /**
    * Fetches initial data from the local database when the component mounts.
@@ -214,43 +214,100 @@ export default function AnalysisPage() {
    * Handles the click of the "Export to PDF" button.
    */
   const handleExportPdf = async () => {
+    if (!data) return;
     setIsExporting(true);
     toast({ title: "PDF Export Started", description: "Generating your analytics report. This may take a moment." });
 
-    const input = document.getElementById('analytics-dashboard');
-    if (!input) {
-      toast({ title: "Error", description: "Could not find dashboard content.", variant: "destructive" });
-      setIsExporting(false);
-      return;
+    // Temporarily make the hidden charts visible for rendering
+    if (hiddenChartRef.current) {
+      hiddenChartRef.current.style.position = 'relative';
+      hiddenChartRef.current.style.top = '0';
+      hiddenChartRef.current.style.zIndex = 'auto';
     }
 
+    // Await for the next render cycle to ensure charts have dimensions
+    await new Promise(resolve => setTimeout(resolve, 50));
+
     try {
-      const canvas = await html2canvas(input);
-      const imgData = canvas.toDataURL('image/png');
-      const pdf = new jsPDF('p', 'mm', 'a4');
-      const imgWidth = 210; // A4 width in mm
-      const pageHeight = 295; // A4 height in mm
-      const imgHeight = canvas.height * imgWidth / canvas.width;
-      let heightLeft = imgHeight;
-      let position = 0;
+      const chartImages: {
+        line?: string;
+        pies: { id: string; title: string; img: string }[];
+        stackedBars: { id: string; title: string; img: string }[];
+      } = {
+        pies: [],
+        stackedBars: []
+      };
 
-      // Add the image and handle pagination for long content
-      pdf.addImage(imgData, 'PNG', 0, position, imgWidth, imgHeight);
-      heightLeft -= pageHeight;
+      // 1. Capture Line Chart
+      const lineChartCanvas = await html2canvas(document.getElementById('line-chart-export')!, { scale: 2 });
+      chartImages.line = lineChartCanvas.toDataURL('image/png');
 
-      while (heightLeft >= 0) {
-        position = heightLeft - imgHeight;
-        pdf.addPage();
-        pdf.addImage(imgData, 'PNG', 0, position, imgWidth, imgHeight);
-        heightLeft -= pageHeight;
+      // 2. Capture Pie Charts
+      const pieChartContainer = document.getElementById('pie-charts-export')!;
+      const pieChartElements = pieChartContainer.querySelectorAll('.pie-chart-export');
+      chartImages.pies = await Promise.all(Array.from(pieChartElements).map(async (el) => {
+        const canvas = await html2canvas(el as HTMLElement, { scale: 2 });
+        return {
+          id: el.getAttribute('data-id')!,
+          title: el.getAttribute('data-title')!,
+          img: canvas.toDataURL('image/png')
+        };
+      }));
+
+      // 3. Capture All Stacked Bar Charts
+      const stackedBarChartContainer = document.getElementById('stacked-bar-charts-export')!;
+      const stackedBarChartElements = stackedBarChartContainer.querySelectorAll('.bar-chart-export');
+
+      chartImages.stackedBars = await Promise.all(Array.from(stackedBarChartElements).map(async (el) => {
+        const canvas = await html2canvas(el as HTMLElement, { scale: 2 });
+        return {
+          id: el.getAttribute('data-id')!,
+          title: el.getAttribute('data-title')!,
+          img: canvas.toDataURL('image/png')
+        };
+      }));
+
+      // 4. Send images and table data to backend
+      const response = await fetch('/api/export-pdf', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          totalApplications: data.totalApplications,
+          municipalityData: data.municipalityData,
+          categoryPieData: data.categoryPieData,
+          psCodeData: data.psCodeData,
+          ageRangeData: data.ageRangeData,
+          genderData: data.genderData,
+          lastSyncTime: data.lastSyncTime,
+          chartImages: chartImages
+        }),
+      });
+
+      if (!response.ok) {
+        throw new Error('Failed to generate PDF on the server.');
       }
 
-      pdf.save('analytics-report.pdf');
+      const blob = await response.blob();
+      const url = window.URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = url;
+      link.setAttribute('download', 'analytics-report.pdf');
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      window.URL.revokeObjectURL(url);
+
       toast({ title: "PDF Export Complete", description: "Your PDF report has been downloaded." });
     } catch (error) {
       console.error("PDF generation failed:", error);
-      toast({ title: "Export Failed", description: "There was an issue generating the PDF.", variant: "destructive" });
+      toast({ title: "Export Failed", description: "There was an issue generating the PDF on the server.", variant: "destructive" });
     } finally {
+      // Revert the hidden charts back to their off-screen position
+      if (hiddenChartRef.current) {
+        hiddenChartRef.current.style.position = 'absolute';
+        hiddenChartRef.current.style.top = '-9999px';
+        hiddenChartRef.current.style.zIndex = '-1';
+      }
       setIsExporting(false);
     }
   };
@@ -280,8 +337,90 @@ export default function AnalysisPage() {
     return [`${value} Applications`, displayName];
   };
 
+  const allStackedBarData = {
+    gender: processStackedBarData(data.rawApps, data.municipalityData, 'gender'),
+    age: processStackedBarData(data.rawApps, data.municipalityData, 'age'),
+    psCode: processStackedBarData(data.rawApps, data.municipalityData, 'psCode'),
+  };
+
+  const renderStackedBarChartsForExport = (dataSets: any) => {
+    return (
+      <div className="grid grid-cols-1 gap-8 pt-4">
+        {Object.entries(dataSets).map(([key, { chartsData, categories }]: any) => (
+          <div key={key} className="space-y-4 bar-chart-export" data-id={key} data-title={key === 'gender' ? 'Gender' : key === 'age' ? 'Age Range' : 'Challenge Statement'}>
+            <h3 className="text-lg font-bold text-center mt-8">{key === 'gender' ? 'Gender' : key === 'age' ? 'Age Range' : 'Challenge Statement'} Breakdown by Municipality</h3>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: '2rem' }}>
+              {chartsData.map(({ municipality, data }: any) => (
+                <div key={municipality} style={{ width: '100%', height: '300px' }}>
+                  <h4 className="text-base font-semibold text-center mb-2">{municipality}</h4>
+                  <ResponsiveContainer width="100%" height="100%">
+                    <BarChart data={data} margin={{ top: 20, right: 30, left: 20, bottom: 5 }}>
+                      <CartesianGrid strokeDasharray="3 3" />
+                      <XAxis dataKey="name" />
+                      <YAxis allowDecimals={false} />
+                      <Tooltip />
+                      <Legend />
+                      {categories.map((category: any, index: number) => (
+                        <Bar key={category} dataKey={category} stackId="a" fill={COLORS[index % COLORS.length]} />
+                      ))}
+                    </BarChart>
+                  </ResponsiveContainer>
+                </div>
+              ))}
+            </div>
+          </div>
+        ))}
+      </div>
+    );
+  };
+
   return (
     <div className="p-6 space-y-6 bg-muted/20 min-h-screen">
+      {/* Hidden div to render charts for export */}
+      <div ref={hiddenChartRef} style={{ position: 'absolute', top: '-9999px', left: 0, width: '100%', pointerEvents: 'none', zIndex: -1 }}>
+        <div id="line-chart-export" style={{ width: '800px', height: '400px', padding: '10px' }}>
+          <Card>
+            <CardHeader><CardTitle>Application Growth Over Time</CardTitle></CardHeader>
+            <CardContent>
+              <ResponsiveContainer width="100%" height={300}>
+                <LineChart data={data?.lineChartData} margin={{ top: 5, right: 20, left: -10, bottom: 5 }}>
+                  <CartesianGrid strokeDasharray="3 3" />
+                  <XAxis
+                    dataKey="date"
+                    tickFormatter={formatDateWithOrdinal}
+                    interval={4}
+                  />
+                  <YAxis allowDecimals={false} />
+                  <Tooltip content={<CustomLineChartTooltip />} />
+                  <Legend />
+                  <Line type="monotone" dataKey="count" stroke="#8884d8" activeDot={{ r: 8 }} name="Submissions" strokeWidth={3} />
+                </LineChart>
+              </ResponsiveContainer>
+            </CardContent>
+          </Card>
+        </div>
+        <div id="pie-charts-export" style={{ width: '800px', display: 'flex', flexWrap: 'wrap' }}>
+          <div style={{ width: '50%', height: '400px', padding: '10px' }} data-id="category" data-title="Division by Category" className="pie-chart-export">
+            <PieChartGraphic data={data?.categoryPieData} />
+          </div>
+          <div style={{ width: '50%', height: '400px', padding: '10px' }} data-id="municipality" data-title="Division by Municipality" className="pie-chart-export">
+            <PieChartGraphic data={data?.municipalityData} />
+          </div>
+          <div style={{ width: '50%', height: '400px', padding: '10px' }} data-id="psCode" data-title="Division by Challenge Statement" className="pie-chart-export">
+            <PieChartGraphic data={data?.psCodeData} tooltipFormatter={psCodeTooltipFormatter} />
+          </div>
+          <div style={{ width: '50%', height: '400px', padding: '10px' }} data-id="ageRange" data-title="Division by Age Range" className="pie-chart-export">
+            <PieChartGraphic data={data?.ageRangeData} />
+          </div>
+          <div style={{ width: '50%', height: '400px', padding: '10px' }} data-id="gender" data-title="Division by Gender" className="pie-chart-export">
+            <PieChartGraphic data={data?.genderData} />
+          </div>
+        </div>
+        <div id="stacked-bar-charts-export" style={{ width: '800px', height: 'auto', padding: '10px' }}>
+          {renderStackedBarChartsForExport(allStackedBarData)}
+        </div>
+      </div>
+
       <header className="flex flex-wrap gap-4 justify-between items-center">
         <div className="flex items-center gap-4">
           <Link href="/">
@@ -324,8 +463,7 @@ export default function AnalysisPage() {
         </div>
       </header>
 
-      {/* The new id is added here to allow html2canvas to select this element */}
-      <main id="analytics-dashboard">
+      <main>
         {data.isEmpty ? (
           <Card className="text-center p-10">
             <AlertCircle className="mx-auto h-12 w-12 text-muted-foreground" />

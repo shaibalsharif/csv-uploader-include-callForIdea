@@ -67,19 +67,14 @@ const CustomTooltip = ({ active, payload, label }: any) => {
   return null;
 };
 
-
-export function StackedBarAnalysis({ apps, municipalityData }: { apps: Application[], municipalityData: any[] }) {
-  const [dimension, setDimension] = useState("gender");
-
-  const processedData = useMemo(() => {
+// New function to process data for a specific dimension
+const processStackedBarData = (apps: Application[], municipalityData: any[], dimension: string) => {
     const psCodeSlugs = ['gkknPnQp', 'jDJaNYGG', 'RjAnzBZJ', 'OJBPQyGP'];
     const topMunicipalities = municipalityData.slice(0, 4).map(m => m.name);
-
     const allCategories = [...new Set(apps.map((app: Application) => app.category?.name?.en_GB || "Uncategorized"))].sort();
 
     const chartsData = topMunicipalities.map(municipality => {
       const muniApps = apps.filter((app: Application) => extractFieldValue(app, "rDkKljjz") === municipality);
-
       const groupedByDimension = muniApps.reduce((acc, app: Application) => {
         let key, translation = "";
         switch (dimension) {
@@ -127,7 +122,6 @@ export function StackedBarAnalysis({ apps, municipalityData }: { apps: Applicati
             return genderOrder.indexOf(a.name) - genderOrder.indexOf(b.name);
 
           case 'psCode':
-            // This regex captures the text prefix and the number suffix
             const regex = /^([a-z]+)-ps-(\d+)$/i;
             const aMatch = a.name.match(regex);
             const bMatch = b.name.match(regex);
@@ -138,14 +132,11 @@ export function StackedBarAnalysis({ apps, municipalityData }: { apps: Applicati
                 const aNum = parseInt(aMatch[2], 10);
                 const bNum = parseInt(bMatch[2], 10);
 
-                // First, sort by the text prefix (e.g., "Char", "Gaib")
                 if (aPrefix !== bPrefix) {
                     return aPrefix.localeCompare(bPrefix);
                 }
-                // If prefixes are the same, sort by the number
                 return aNum - bNum;
             }
-            // Fallback for any values that don't match the pattern
             return a.name.localeCompare(b.name);
 
           default:
@@ -157,12 +148,44 @@ export function StackedBarAnalysis({ apps, municipalityData }: { apps: Applicati
     });
 
     return { chartsData, categories: allCategories };
+};
+
+export function StackedBarAnalysis({ apps, municipalityData }: { apps: Application[], municipalityData: any[] }) {
+  const [dimension, setDimension] = useState("gender");
+
+  // Renders a single chart based on the selected dimension
+  const renderSingleChart = useMemo(() => {
+    if (!apps || !municipalityData) return null;
+    const { chartsData, categories } = processStackedBarData(apps, municipalityData, dimension);
+    
+    return (
+        <CardContent className="grid gap-8 pt-4 md:grid-cols-2">
+            {chartsData.map(({ municipality, data }) => (
+                <div key={municipality} className="group">
+                    <h3 className="text-lg font-semibold text-center mb-2 transition-all duration-300 group-hover:text-primary group-hover:scale-105">
+                        {municipality}
+                    </h3>
+                    <ResponsiveContainer width="100%" height={250}>
+                        <BarChart data={data} margin={{ top: 20, right: 30, left: 20, bottom: 5 }}>
+                            <CartesianGrid strokeDasharray="3 3" />
+                            <XAxis dataKey="name" />
+                            <YAxis allowDecimals={false} />
+                            <Tooltip content={<CustomTooltip />} />
+                            <Legend />
+                            {categories.map((category, index) => (
+                                <Bar key={category} dataKey={category} stackId="a" fill={COLORS[index % COLORS.length]} />
+                            ))}
+                        </BarChart>
+                    </ResponsiveContainer>
+                </div>
+            ))}
+        </CardContent>
+    );
   }, [apps, municipalityData, dimension]);
 
   return (
     <Card className="transition-all duration-300 hover:shadow-xl group">
       <CardHeader className="flex flex-row items-center justify-between ">
-        {/* MODIFIED: Simplified the hover animation for the title for a cleaner effect */}
         <div className="text-left">
           <CardTitle>
             Municipality Breakdown
@@ -171,7 +194,6 @@ export function StackedBarAnalysis({ apps, municipalityData }: { apps: Applicati
             Comparing application categories across municipalities.
           </CardDescription>
         </div>
-
         <div className="flex items-center gap-2">
           <Label htmlFor="breakdown-select" className="font-semibold whitespace-nowrap">
             Stack by
@@ -190,29 +212,10 @@ export function StackedBarAnalysis({ apps, municipalityData }: { apps: Applicati
           </Select>
         </div>
       </CardHeader>
-
-      <CardContent className="grid gap-8 pt-4 md:grid-cols-2">
-        {processedData.chartsData.map(({ municipality, data }) => (
-          <div key={municipality} className="group">
-            <h3 className="text-lg font-semibold text-center mb-2 transition-all duration-300 group-hover:text-primary group-hover:scale-105">
-              {municipality}
-            </h3>
-            <ResponsiveContainer width="100%" height={250}>
-              <BarChart data={data} margin={{ top: 20, right: 30, left: 20, bottom: 5 }}>
-                <CartesianGrid strokeDasharray="3 3" />
-                {/* MODIFIED: Removed the custom tick. The default X-axis is now used for all dimensions, showing only the code. */}
-                <XAxis dataKey="name" />
-                <YAxis allowDecimals={false} />
-                <Tooltip content={<CustomTooltip />} />
-                <Legend />
-                {processedData.categories.map((category, index) => (
-                  <Bar key={category} dataKey={category} stackId="a" fill={COLORS[index % COLORS.length]} />
-                ))}
-              </BarChart>
-            </ResponsiveContainer>
-          </div>
-        ))}
-      </CardContent>
+      {renderSingleChart}
     </Card>
   );
 }
+
+// Export the data processing function for use in the parent component
+export { processStackedBarData };

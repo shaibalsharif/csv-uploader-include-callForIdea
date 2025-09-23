@@ -10,9 +10,10 @@ type FlippableCardProps = {
   chartComponent: React.ReactNode;
   tableComponent: React.ReactNode;
   onFlip?: () => void;
+  exportId?: string;
 };
 
-export function FlippableCard({ title, chartComponent, tableComponent, onFlip }: FlippableCardProps) {
+export function FlippableCard({ title, chartComponent, tableComponent, onFlip, exportId }: FlippableCardProps) {
   const [isFlipped, setIsFlipped] = useState(false);
 
   const handleFlip = () => {
@@ -27,7 +28,7 @@ export function FlippableCard({ title, chartComponent, tableComponent, onFlip }:
       <div className="flip-card-inner">
         {/* Front of the Card (Chart) */}
         <div className="flip-card-front">
-          <Card className="flex flex-col h-full transition-all duration-300 hover:shadow-xl">
+          <Card className={`flex flex-col h-full transition-all duration-300 hover:shadow-xl ${exportId ? 'pie-chart-export' : ''}`} data-id={exportId} data-title={title}>
             <CardHeader className="flex flex-row items-center justify-between">
               <CardTitle>{title}</CardTitle>
               <Button variant="ghost" size="icon" onClick={handleFlip}>

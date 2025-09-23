@@ -74,22 +74,22 @@ export default function HomePage() {
               Upload and process CSV files to submit applications to GoodGrants with automated tagging
             </p>
           </div>
-        
+
           <Link className="cursor-pointer" href="/analysis" passHref>
-            <SpecialButton  label="Open Analysis"/>
-          
+            <SpecialButton label="Open Analysis" />
+
           </Link>
         </div>
 
 
-        <div className="flex gap-4 mb-6">
+        <div className="flex gap-4 mb-6 overflow-x-auto">
           <Button
             variant={activeTab === "upload" ? "secondary" : "ghost"}
             onClick={() => {
               setActiveTab("upload");
               handleReset();
             }}
-            className="flex items-center gap-2"
+            className="flex items-center gap-2 cursor-pointer"
           >
             <Upload className="w-4 h-4" />
             Upload & Process
@@ -100,7 +100,7 @@ export default function HomePage() {
               setActiveTab("history");
               handleReset();
             }}
-            className="flex items-center gap-2"
+            className="flex items-center gap-2 cursor-pointer"
           >
             <Database className="w-4 h-4" />
             Batch History
@@ -111,7 +111,7 @@ export default function HomePage() {
               setActiveTab("failed");
               handleReset();
             }}
-            className="flex items-center gap-2"
+            className="flex items-center gap-2 cursor-pointer"
           >
             <XCircle className="w-4 h-4" />
             Failed Submissions
@@ -123,7 +123,7 @@ export default function HomePage() {
               setActiveTab("manage");
               handleReset();
             }}
-            className="flex items-center gap-2"
+            className="flex items-center gap-2 cursor-pointer"
           >
             <Briefcase className="w-4 h-4" />
             Manage Applications

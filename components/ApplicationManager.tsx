@@ -355,7 +355,7 @@ function ApplicationDetailsModal({
 // --- Main Component ---
 export function ApplicationManager({ config }: ApplicationManagerProps) {
   if (typeof window !== "undefined") {
-    ;(window as any).appConfig = config
+    ; (window as any).appConfig = config
   }
 
   const [applications, setApplications] = useState<Application[]>([])
@@ -524,13 +524,13 @@ export function ApplicationManager({ config }: ApplicationManagerProps) {
         }
         return [label, value]
       }) || []
-    ;(doc as any).autoTable({
-      startY: 40,
-      head: [["Field", "Value"]],
-      body: body,
-      theme: "striped",
-      headStyles: { fillColor: [22, 160, 133] },
-    })
+      ; (doc as any).autoTable({
+        startY: 40,
+        head: [["Field", "Value"]],
+        body: body,
+        theme: "striped",
+        headStyles: { fillColor: [22, 160, 133] },
+      })
 
     return doc
   }
@@ -572,8 +572,8 @@ export function ApplicationManager({ config }: ApplicationManagerProps) {
           <CardDescription>Browse, preview, filter, and export applications.</CardDescription>
         </CardHeader>
         <CardContent>
-          <div className="flex items-center justify-between mb-4">
-            <div className="flex gap-2">
+          <div className="flex items-center justify-between mb-4 flex-col md:flex-row gap-2">
+            <div className="flex gap-2 ">
               {selectedSlugs.length > 0 ? (
                 <DropdownMenu>
                   <DropdownMenuTrigger asChild>

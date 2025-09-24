@@ -399,7 +399,7 @@ export function ApplicationManager({ config }: ApplicationManagerProps) {
     try {
       const apiFilters = {
         ...debouncedFilters,
-        tags: debouncedFilters.tags, // ✅ FIX: keep as array
+        tags: debouncedFilters.tags,
       }
       const response = await getApplications(config, params, apiFilters)
       setApplications(response.data)
@@ -773,30 +773,18 @@ export function ApplicationManager({ config }: ApplicationManagerProps) {
                             <DropdownMenuItem onClick={() => handleExport("pdf", [app.slug])}>
                               <FileDown className="mr-2 h-4 w-4" /> Export as PDF
                             </DropdownMenuItem>
-                            {params.archived === "only" ? (
-                              <DropdownMenuItem onClick={() => handleAction(app.slug, "unarchive")}>
-                                <ArchiveRestore className="mr-2 h-4 w-4" /> Un-archive
-                              </DropdownMenuItem>
-                            ) : (
-                              <DropdownMenuItem onClick={() => handleAction(app.slug, "archive")}>
-                                <Archive className="mr-2 h-4 w-4" /> Archive
-                              </DropdownMenuItem>
-                            )}
-                            {params.deleted === "only" ? (
-                              <DropdownMenuItem
-                                className="text-red-600"
-                                onClick={() => handleAction(app.slug, "undelete")}
-                              >
-                                <Undo className="mr-2 h-4 w-4" /> Undelete
-                              </DropdownMenuItem>
-                            ) : (
-                              <DropdownMenuItem
-                                className="text-red-600"
-                                onClick={() => handleAction(app.slug, "delete")}
-                              >
-                                <Trash2 className="mr-2 h-4 w-4" /> Delete
-                              </DropdownMenuItem>
-                            )}
+                            <DropdownMenuItem disabled>
+                              <ArchiveRestore className="mr-2 h-4 w-4" /> Un-archive
+                            </DropdownMenuItem>
+                            <DropdownMenuItem disabled>
+                              <Archive className="mr-2 h-4 w-4" /> Archive
+                            </DropdownMenuItem>
+                            <DropdownMenuItem disabled>
+                              <Undo className="mr-2 h-4 w-4" /> Undelete
+                            </DropdownMenuItem>
+                            <DropdownMenuItem disabled>
+                              <Trash2 className="mr-2 h-4 w-4" /> Delete
+                            </DropdownMenuItem>
                           </DropdownMenuContent>
                         </DropdownMenu>
                       </TableCell>

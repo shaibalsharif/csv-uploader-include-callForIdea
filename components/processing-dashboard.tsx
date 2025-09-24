@@ -1,3 +1,5 @@
+"use client";
+
 import { useState, useEffect, useRef } from "react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -164,6 +166,9 @@ export function ProcessingDashboard({ csvFile, processingMode, config, onComplet
   const [isDetailsModalOpen, setIsDetailsModalOpen] = useState(false);
   const hasProcessedRef = useRef(false);
 
+  // New state to track the currently processing application for UI feedback
+  const [currentlyProcessingId, setCurrentlyProcessingId] = useState<string | null>(null);
+
   useEffect(() => {
     if (csvFile && !hasProcessedRef.current) {
       hasProcessedRef.current = true;
@@ -300,6 +305,8 @@ export function ProcessingDashboard({ csvFile, processingMode, config, onComplet
       const appIndex = applications.findIndex(a => a.id === app.id);
       try {
         setApplications((prev) => prev.map((a, i) => (i === appIndex ? { ...a, status: "processing" } : a)));
+        
+        // Update the log with a specific message that includes the app ID
         addLog(`Processing application: ${app.title}`, app.id);
 
         const formattedData = { ...app.data };
@@ -539,6 +546,15 @@ export function ProcessingDashboard({ csvFile, processingMode, config, onComplet
   const addLog = (message: string, appId?: string) => {
     const timestamp = new Date().toLocaleTimeString();
     const prefix = appId ? `[${timestamp}] (App: ${appId}) ` : `[${timestamp}] `;
+    
+    // Check for the "Processing application" message to update the processing ID
+    if (message.includes("Processing application:") && appId) {
+      setCurrentlyProcessingId(appId);
+    } else if (message.includes("Successfully submitted:") || message.includes("Error processing")) {
+      // Clear the processing ID when a success or error log for the app appears
+      setCurrentlyProcessingId(null);
+    }
+
     setLogs((prev) => [...prev, `${prefix}${message}`]);
   };
 
@@ -666,17 +682,21 @@ export function ProcessingDashboard({ csvFile, processingMode, config, onComplet
                         const validationErrors = municipalityConfirmation.confirmed
                           ? validateApplicationData(app.data, municipalityConfirmation.selected)
                           : [];
+                        
+                        // New logic to apply the animated border
+                        const isProcessingItem = currentlyProcessingId === app.id;
 
                         return (
                           <div
                             key={app.id}
                             onClick={() => handleApplicationSelect(app)}
                             className={cn(
-                              "p-3 rounded-lg border cursor-pointer transition-all hover:bg-muted/50",
-                              app.status === "processing" ? "border-primary-foreground animate-pulse bg-primary/5 shadow-md" : "border-border",
+                              "relative p-3 rounded-lg border cursor-pointer transition-all",
+                              app.status === "processing" ? "bg-primary/5 shadow-md" : "border-border",
                               app.status === "completed" ? "border-green-500" : "",
                               app.status === "error" ? "border-red-500" : "",
-                              selectedApplication?.id === app.id ? "bg-accent shadow-lg" : ""
+                              selectedApplication?.id === app.id ? "bg-accent shadow-lg" : "",
+                              isProcessingItem ? "processing-gradient-border" : ""
                             )}
                           >
                             <div className="flex items-center justify-between mb-2">

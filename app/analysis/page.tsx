@@ -2,7 +2,7 @@
 
 import { useState, useEffect, ReactNode, useRef } from "react";
 import Link from "next/link";
-import { LineChart, Line, PieChart, Pie, Cell, XAxis, YAxis, CartesianGrid, Tooltip, Legend, BarChart, Bar, ResponsiveContainer } from "recharts";
+import { LineChart, Line, PieChart, Pie, Cell, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, BarChart, Bar } from "recharts";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Button } from "@/components/ui/button";
@@ -154,8 +154,8 @@ const CustomLineChartTooltip = ({ active, payload, label }: any) => {
     return (
       <div className="p-3 bg-background border rounded-md shadow-lg">
         <p className="font-bold text-sm">{formatDateWithOrdinal(label)}</p>
-        <p className="text-sm text-primary">Submissions this day: <strong>{data.count}</strong></p>
-        <p className="text-sm text-muted-foreground">Total to date: <strong>{data.total}</strong></p>
+        <p className="text-sm text-primary">Submissions this day: <strong>{data.createdAtCount} (Online)</strong></p>
+        <p className="text-sm text-muted-foreground">Updates this day: <strong>{data.updatedAtCount} (Offline)</strong></p>
       </div>
     );
   }
@@ -329,7 +329,7 @@ export default function AnalysisPage() {
   const displayTextTime = lastSyncDate ? formatTimeMinutes(lastSyncDate) : "N/A";
   const hoverTextTime = lastSyncDate ? formatTimeSmart(lastSyncDate) : "never";
 
-  const topMunicipalities = data.municipalityData?.slice(0, 4) || [];
+  const topMunicipalities = data.municipalityDataWithOnlineOffline?.slice(0, 4) || [];
 
   const psCodeTooltipFormatter = (value: number, name: string, props: any): [string, string] => {
     const translation = props?.payload?.translation;
@@ -435,10 +435,7 @@ export default function AnalysisPage() {
           </div>
         </div>
         <div className="flex items-center space-x-4">
-          <Button onClick={handleExportPdf} disabled={isExporting || isSyncing} className="cursor-pointer">
-            {isExporting ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <FileDown className="mr-2 h-4 w-4" />}
-            {isExporting ? "Exporting..." : "Export to PDF"}
-          </Button>
+
           <div className="border p-3 rounded-lg bg-background flex items-center space-x-4 group">
             <div className="text-right group">
               <p className="text-sm font-medium">Data Last Updated</p>
@@ -459,6 +456,10 @@ export default function AnalysisPage() {
               {isSyncing ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <RefreshCw className="mr-2 h-4 w-4" />}
               {isSyncing ? "Syncing..." : "Sync Now"}
             </Button>
+            <Button onClick={handleExportPdf} disabled={isExporting || isSyncing} className="cursor-pointer">
+              {isExporting ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <FileDown className="mr-2 h-4 w-4" />}
+              {isExporting ? "Exporting..." : "Export to PDF"}
+            </Button>
           </div>
         </div>
       </header>
@@ -475,12 +476,24 @@ export default function AnalysisPage() {
             <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-5">
               <Card className="transition-all duration-300 hover:shadow-xl">
                 <CardHeader className="pb-2"><CardTitle className="text-base font-medium">Total Applications</CardTitle></CardHeader>
-                <CardContent><p className="text-2xl font-bold">{data.totalApplications}</p></CardContent>
+                <CardContent>
+                  <p className="text-2xl font-bold">{data.totalApplications}</p>
+                  <p className="text-xs text-muted-foreground">
+                    <span className="text-green-500 font-bold  text-lg tracking-wider">{data.onlineApplications}</span> Online,{' '}
+                    <span className="text-red-500 font-bold text-lg tracking-wider">{data.offlineApplications}</span> Offline
+                  </p>
+                </CardContent>
               </Card>
-              {topMunicipalities.map((muni: { name: string, value: number }) => (
+              {topMunicipalities.map((muni: { name: string, total: number, online: number, offline: number }) => (
                 <Card key={muni.name} className="transition-all duration-300 hover:shadow-xl">
                   <CardHeader className="pb-2"><CardTitle className="text-base font-medium">{muni.name}</CardTitle></CardHeader>
-                  <CardContent><p className="text-2xl font-bold">{muni.value}</p></CardContent>
+                  <CardContent>
+                    <p className="text-2xl font-bold">{muni.total}</p>
+                    <p className="text-xs text-muted-foreground">
+                      <span className="text-green-500 font-bold text-lg">{muni.online}</span> Online,{' '}
+                      <span className="text-red-500 font-bold text-lg">{muni.offline}</span> Offline
+                    </p>
+                  </CardContent>
                 </Card>
               ))}
             </div>
@@ -499,7 +512,8 @@ export default function AnalysisPage() {
                     <YAxis allowDecimals={false} />
                     <Tooltip content={<CustomLineChartTooltip />} />
                     <Legend />
-                    <Line type="monotone" dataKey="count" stroke="#8884d8" activeDot={{ r: 8 }} name="Submissions" strokeWidth={3} />
+                    <Line type="monotone" dataKey="createdAtCount" stroke="#8884d8" activeDot={{ r: 8 }} name="Online Submissions" strokeWidth={3} />
+                    <Line type="monotone" dataKey="updatedAtCount" stroke="#82ca9d" activeDot={{ r: 8 }} name="Offline Updates" strokeWidth={3} />
                   </LineChart>
                 </ResponsiveContainer>
               </CardContent>

@@ -107,29 +107,38 @@ export async function getAnalyticsFromDB() {
     const { rows: logRows } = await sql`SELECT last_run_at FROM cron_job_logs WHERE job_name = 'sync-goodgrants-applications'`;
     const lastSyncTime = logRows[0]?.last_run_at || null;
 
-    const { rows: apps } = await sql`SELECT slug, updated_at, category, raw_fields FROM goodgrants_applications;`;
+    const { rows: apps } = await sql`SELECT slug, created_at, updated_at, category, raw_fields FROM goodgrants_applications;`;
     if (apps.length === 0) {
       return { lastSyncTime, isEmpty: true };
     }
 
     const totalApplications = apps.length;
 
-    const growthData = apps.reduce((acc, app) => {
+    const cutoffDate = new Date("2025-08-31T23:59:59.999Z");
+    const onlineApplications = apps.filter(app => new Date(app.created_at) <= cutoffDate).length;
+    const offlineApplications = totalApplications - onlineApplications;
+
+    const createdGrowthData = apps.reduce((acc, app) => {
+      const date = new Date(app.created_at).toISOString().split("T")[0];
+      acc[date] = (acc[date] || 0) + 1;
+      return acc;
+    }, {} as Record<string, number>);
+
+    const updatedGrowthData = apps.reduce((acc, app) => {
       const date = new Date(app.updated_at).toISOString().split("T")[0];
       acc[date] = (acc[date] || 0) + 1;
       return acc;
     }, {} as Record<string, number>);
 
-    const lineChartData = Object.entries(growthData)
-      .map(([date, count]) => ({ date, count }))
-      .sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
-    
-    let cumulativeTotal = 0;
-    const lineChartDataWithTotal = lineChartData.map(item => {
-        cumulativeTotal += item.count;
-        return { ...item, total: cumulativeTotal };
-    });
+    // Combine and sort all unique dates
+    const allDates = [...new Set([...Object.keys(createdGrowthData), ...Object.keys(updatedGrowthData)])].sort();
 
+    const lineChartData = allDates.map(date => ({
+      date: date,
+      createdAtCount: createdGrowthData[date] || 0,
+      updatedAtCount: updatedGrowthData[date] || 0,
+    }));
+    
     const categoryData = apps.reduce((acc, app) => {
       const categoryName = app.category?.name?.en_GB || "Uncategorized";
       acc[categoryName] = (acc[categoryName] || 0) + 1;
@@ -144,6 +153,24 @@ export async function getAnalyticsFromDB() {
         return acc;
       }, {} as Record<string, number>);
       return Object.entries(counts).map(([name, value]) => ({ name, value })).sort((a, b) => b.value - a.value);
+    };
+
+    const analyzeFieldWithOnlineOffline = (slug: string) => {
+        const counts = apps.reduce((acc, app) => {
+            const value = extractFieldValue(app, slug);
+            if (!acc[value]) {
+                acc[value] = { total: 0, online: 0, offline: 0 };
+            }
+            acc[value].total++;
+            if (new Date(app.created_at) <= cutoffDate) {
+                acc[value].online++;
+            } else {
+                acc[value].offline++;
+            }
+            return acc;
+        }, {} as Record<string, { total: number, online: number, offline: number }>);
+        
+        return Object.entries(counts).map(([name, data]) => ({ name, ...data })).sort((a, b) => b.total - a.total);
     };
     
     const psCodeSlugs = ['gkknPnQp', 'jDJaNYGG', 'RjAnzBZJ', 'OJBPQyGP'];
@@ -180,6 +207,7 @@ export async function getAnalyticsFromDB() {
     const municipalityData = analyzeField("rDkKljjz");
     const ageRangeData = analyzeField("xjzONPwj");
     const genderData = analyzeField("rojNQzOz");
+    const municipalityDataWithOnlineOffline = analyzeFieldWithOnlineOffline("rDkKljjz");
 
     const ageOrder = [
         'Below 18',
@@ -197,12 +225,15 @@ export async function getAnalyticsFromDB() {
     return {
       lastSyncTime,
       totalApplications,
-      lineChartData: lineChartDataWithTotal,
+      onlineApplications,
+      offlineApplications,
+      lineChartData,
       categoryPieData,
       municipalityData,
       psCodeData,
       ageRangeData,
       genderData,
+      municipalityDataWithOnlineOffline,
       isEmpty: false,
       rawApps: apps,
     };

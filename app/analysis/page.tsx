@@ -154,8 +154,8 @@ const CustomLineChartTooltip = ({ active, payload, label }: any) => {
     return (
       <div className="p-3 bg-background border rounded-md shadow-lg">
         <p className="font-bold text-sm">{formatDateWithOrdinal(label)}</p>
-        <p className="text-sm text-primary">Submissions this day: <strong>{data.createdAtCount} (Online)</strong></p>
-        <p className="text-sm text-muted-foreground">Updates this day: <strong>{data.updatedAtCount} (Offline)</strong></p>
+        <p className="text-sm text-[#8884d8]">Submissions this day: <strong>{data.createdAtCount} </strong></p>
+        <p className="text-sm text-green-400">Updates this day: <strong>{data.updatedAtCount} </strong></p>
       </div>
     );
   }

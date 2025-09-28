@@ -18,7 +18,6 @@ async function apiRequest(endpoint: string, apiKey: string) {
   });
 
   if (!response.ok) {
-    // Basic retry for 429 error
     if (response.status === 429) {
       console.warn("Rate limited. Retrying after 1 second...");
       await sleep(1000);
@@ -60,27 +59,26 @@ const enrichData = async (entries: any[], config: { apiKey: string }) => {
   const applicantDataMap = await getApplicantDataBySlugs(slugs);
   const missingSlugs = slugs.filter((slug) => !applicantDataMap.has(slug));
 
-  // --- FIX: Process fallback requests sequentially to avoid rate limiting ---
   if (missingSlugs.length > 0) {
     for (const slug of missingSlugs) {
       try {
         const detail = await getApplicationDetails(config, slug);
         if (detail && detail.slug) {
-         
-
           const municipalityField = detail.application_fields?.find(
-            (f: any) => f.slug === "rDkKljjz" 
+            (f: any) => f.slug === "rDkKljjz"
           );
          
-          
-          const municipality = municipalityField?.value || "N/A";
+
+          const municipality =
+            municipalityField?.value ||
+            municipalityField?.translated.en_GB ||
+            "N/A";
 
           applicantDataMap.set(detail.slug, {
             name: detail.applicant.name,
             municipality: municipality,
           });
         }
-        // Add a small delay between each request to respect API rate limits
         await sleep(200);
       } catch (error) {
         console.error(
@@ -94,7 +92,6 @@ const enrichData = async (entries: any[], config: { apiKey: string }) => {
   return entries.map((entry: any) => {
     const slug = entry?.slug;
     const applicantInfo = applicantDataMap.get(slug);
-
     return {
       slug: entry.slug,
       tags: entry.tags
@@ -113,60 +110,16 @@ const enrichData = async (entries: any[], config: { apiKey: string }) => {
   });
 };
 
-export async function getLeaderboardData(
+// --- UPDATED to fetch a single page and enrich it ---
+export async function getLeaderboardPage(
   config: { apiKey: string },
   scoreSetSlug: string,
   page: number,
   perPage: number,
-  titleSearch?: string,
   sort?: { key: string; direction: "asc" | "desc" }
 ) {
   if (!scoreSetSlug) {
     return { data: [], current_page: 1, last_page: 1, total: 0 };
-  }
-
-  if (titleSearch) {
-    let allEntries: any[] = [];
-    let currentPage = 1;
-    let hasMorePages = true;
-
-    while (hasMorePages) {
-      const query = new URLSearchParams({
-        score_set: scoreSetSlug,
-        per_page: "100",
-        page: currentPage.toString(),
-      }).toString();
-
-      const response = await apiRequest(`/leaderboard?${query}`, config.apiKey);
-      allEntries = allEntries.concat(response.data);
-
-      if (!response.next_page_url) {
-        hasMorePages = false;
-      } else {
-        currentPage++;
-      }
-    }
-
-    const filteredEntries = allEntries.filter((entry) =>
-      entry.title?.toLowerCase().includes(titleSearch.toLowerCase())
-    );
-
-    const enrichedEntries = await enrichData(filteredEntries, config);
-    enrichedEntries.sort((a, b) => b.totalScore - a.totalScore);
-
-    const total = enrichedEntries.length;
-    const lastPage = Math.ceil(total / perPage);
-    const paginatedData = enrichedEntries.slice(
-      (page - 1) * perPage,
-      page * perPage
-    );
-
-    return {
-      data: paginatedData,
-      current_page: page,
-      last_page: lastPage,
-      total: total,
-    };
   }
 
   const query = new URLSearchParams({

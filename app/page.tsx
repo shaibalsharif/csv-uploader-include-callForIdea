@@ -5,20 +5,19 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
-import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group"
-import { Upload, FileText, Settings, Database, AlertCircle, XCircle, Briefcase } from "lucide-react"
+//import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group"
+import { Upload, FileText, Settings, Database, AlertCircle, XCircle, Trophy, GanttChartSquare } from "lucide-react" // Added Trophy
 import { Alert, AlertDescription } from "@/components/ui/alert"
 import { CSVUploader } from "@/components/csv-uploader"
 import { ProcessingDashboard } from "@/components/processing-dashboard"
 import { BatchHistory } from "@/components/batch-history"
 import { FailedSubmissions } from "@/components/failed-submissions"
 import { ApplicationManager } from "@/components/ApplicationManager"
-import Link from "next/link"
-import { BarChart } from "recharts"
-import SpecialButton from "@/components/SpecialButton"
+import { Leaderboard } from "@/components/Leaderboard"
 
 export default function HomePage() {
-  const [activeTab, setActiveTab] = useState<"upload" | "history" | "failed" | "manage" | "analysis">("upload")
+  // Added 'leaderboard' to the possible tab states
+  const [activeTab, setActiveTab] = useState<"upload" | "history" | "failed" | "manage" | "leaderboard">("upload")
   const [csvFile, setCsvFile] = useState<File | null>(null)
   const [processingMode, setProcessingMode] = useState<"handsfree" | "interruption">("handsfree")
   const [isCompleted, setIsCompleted] = useState(false)
@@ -64,76 +63,10 @@ export default function HomePage() {
 
   const isConfigComplete = config.apiKey && config.formSlug && config.baseUrl && config.applicantSlug
 
-  return (
-    <div className="min-h-screen bg-background">
-      <div className="container mx-auto py-8 px-4">
-        <div className=" flex justify-between items-center ">
-          <div className="mb-8">
-            <h1 className="text-3xl font-bold text-foreground mb-2">GoodGrants CSV Bulk Uploader</h1>
-            <p className="text-muted-foreground">
-              Upload and process CSV files to submit applications to GoodGrants with automated tagging
-            </p>
-          </div>
-
-          <Link className="cursor-pointer" href="/analysis" passHref>
-            <SpecialButton label="Open Analysis" />
-
-          </Link>
-        </div>
-
-
-        <div className="flex gap-4 mb-6 overflow-x-auto">
-          <Button
-            variant={activeTab === "upload" ? "secondary" : "ghost"}
-            onClick={() => {
-              setActiveTab("upload");
-              handleReset();
-            }}
-            className="flex items-center gap-2 cursor-pointer"
-          >
-            <Upload className="w-4 h-4" />
-            Upload & Process
-          </Button>
-          <Button
-            variant={activeTab === "history" ? "secondary" : "ghost"}
-            onClick={() => {
-              setActiveTab("history");
-              handleReset();
-            }}
-            className="flex items-center gap-2 cursor-pointer"
-          >
-            <Database className="w-4 h-4" />
-            Batch History
-          </Button>
-          <Button
-            variant={activeTab === "failed" ? "secondary" : "ghost"}
-            onClick={() => {
-              setActiveTab("failed");
-              handleReset();
-            }}
-            className="flex items-center gap-2 cursor-pointer"
-          >
-            <XCircle className="w-4 h-4" />
-            Failed Submissions
-          </Button>
-
-          <Button
-            variant={activeTab === "manage" ? "secondary" : "ghost"}
-            onClick={() => {
-              setActiveTab("manage");
-              handleReset();
-            }}
-            className="flex items-center gap-2 cursor-pointer"
-          >
-            <Briefcase className="w-4 h-4" />
-            Manage Applications
-          </Button>
-
-        </div>
-
-        {activeTab === "upload" && (
-          <div className="space-y-6">
-            {!csvFile || isCompleted ? (
+  const renderActiveTab = () => {
+    switch (activeTab) {
+        case "upload":
+            return !csvFile || isCompleted ? (
               <>
                 <Card>
                   <CardHeader>
@@ -201,14 +134,79 @@ export default function HomePage() {
                 config={config}
                 onComplete={handleComplete}
               />
-            )}
-          </div>
-        )}
+            );
+        case "history":
+            return <BatchHistory />;
+        case "failed":
+            return <FailedSubmissions />;
+        case "manage":
+            return <ApplicationManager config={config} />;
+        case "leaderboard": // New case for the leaderboard
+            return <Leaderboard config={config} />;
+        default:
+            return null;
+    }
+  }
 
-        {activeTab === "history" && <BatchHistory />}
-        {activeTab === "failed" && <FailedSubmissions />}
-        {activeTab === "manage" && <ApplicationManager config={config} />}
+  return (
+    <div className="min-h-screen bg-background">
+      <div className="container mx-auto py-8 px-4">
+        <div className="mb-8">
+          <h1 className="text-3xl font-bold text-foreground mb-2">GoodGrants CSV Bulk Uploader</h1>
+          <p className="text-muted-foreground">
+            Upload, process, manage, and view leaderboards for GoodGrants applications.
+          </p>
+        </div>
+
+        <div className="flex gap-4 mb-6">
+          <Button
+            variant={activeTab === "upload" ? "default" : "outline"}
+            onClick={() => { setActiveTab("upload"); handleReset(); }}
+            className="flex items-center gap-2"
+          >
+            <Upload className="w-4 h-4" />
+            Upload & Process
+          </Button>
+          <Button
+            variant={activeTab === "history" ? "default" : "outline"}
+            onClick={() => setActiveTab("history")}
+            className="flex items-center gap-2"
+          >
+            <Database className="w-4 h-4" />
+            Batch History
+          </Button>
+          <Button
+            variant={activeTab === "failed" ? "default" : "outline"}
+            onClick={() => setActiveTab("failed")}
+            className="flex items-center gap-2"
+          >
+            <XCircle className="w-4 h-4" />
+            Failed Submissions
+          </Button>
+          <Button
+            variant={activeTab === "manage" ? "default" : "outline"}
+            onClick={() => setActiveTab("manage")}
+            className="flex items-center gap-2"
+          >
+            <GanttChartSquare className="w-4 h-4" />
+            Manage Applications
+          </Button>
+           {/* New Leaderboard Button */}
+          <Button
+            variant={activeTab === "leaderboard" ? "default" : "outline"}
+            onClick={() => setActiveTab("leaderboard")}
+            className="flex items-center gap-2"
+          >
+            <Trophy className="w-4 h-4" />
+            Leaderboard
+          </Button>
+        </div>
+
+        <div className="space-y-6">
+            {renderActiveTab()}
+        </div>
       </div>
     </div>
   )
 }
+

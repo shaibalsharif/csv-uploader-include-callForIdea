@@ -249,7 +249,7 @@ export function Leaderboard({ config }: LeaderboardProps) {
     return (
         <Card>
             <CardHeader>
-                <div className="flex justify-between items-start">
+                <div className="md:flex justify-between items-start">
                     <div>
                         <CardTitle className="flex items-center gap-2"><Trophy className="w-5 h-5" /> Leaderboard</CardTitle>
                         <CardDescription>Top ranked applications based on the selected score set.</CardDescription>

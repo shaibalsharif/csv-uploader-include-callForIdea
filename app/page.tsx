@@ -158,7 +158,7 @@ export default function HomePage() {
           </p>
         </div>
 
-        <div className="flex gap-4 mb-6">
+        <div className="grid grid-cols-2 md:flex gap-4 mb-6">
           <Button
             variant={activeTab === "upload" ? "default" : "outline"}
             onClick={() => { setActiveTab("upload"); handleReset(); }}

@@ -11,17 +11,16 @@ import { Input } from "@/components/ui/input";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { Progress } from "@/components/ui/progress";
 import { RefreshCw, Trophy, AlertCircle, ChevronLeft, ChevronRight, ArrowUpDown, Tag, Search } from 'lucide-react';
-import { getLeaderboardPage, getScoreSets } from '../actions/leaderboard';
-import { addEligibleTagToApplications } from '../actions/application';
-import { useToast } from "./ui/use-toast";
+import { getLeaderboardPage, getScoreSets } from '@/actions/leaderboard';
+import { addEligibleTagToApplications } from '@/actions/application';
+import { useToast } from "@/components/ui/use-toast";
+import { Badge } from './ui/badge';
 
-type SortableKeys = 'applicantName' | 'municipality' | 'totalScore' | 'title';
+type SortableKeys = 'title' | 'totalScore';
 
-interface EnrichedLeaderboardEntry {
+interface LeaderboardEntry {
   slug: string;
   tags: string[];
-  applicantName: string;
-  municipality: string;
   totalScore: number;
   title: string;
   scoreBreakdown: { name: string; score: string }[];
@@ -54,15 +53,13 @@ const SkeletonRow = () => (
     <TableRow>
         <TableCell><Skeleton className="h-5 w-5" /></TableCell>
         <TableCell><Skeleton className="h-5 w-8" /></TableCell>
-        <TableCell><Skeleton className="h-5 w-40" /></TableCell>
-        <TableCell><Skeleton className="h-5 w-32" /></TableCell>
-        <TableCell><Skeleton className="h-5 w-56" /></TableCell>
+        <TableCell><Skeleton className="h-5 w-full" /></TableCell>
         <TableCell><Skeleton className="h-5 w-20" /></TableCell>
     </TableRow>
 );
 
 export function Leaderboard({ config }: LeaderboardProps) {
-    const [allData, setAllData] = useState<EnrichedLeaderboardEntry[]>([]);
+    const [leaderboard, setLeaderboard] = useState<LeaderboardEntry[]>([]);
     const [scoreSets, setScoreSets] = useState<ScoreSet[]>([]);
     const [isLoading, setIsLoading] = useState(true);
     const [isLoadingSets, setIsLoadingSets] = useState(true);
@@ -78,15 +75,7 @@ export function Leaderboard({ config }: LeaderboardProps) {
     const [titleSearch, setTitleSearch] = useState("");
     const debouncedTitleSearch = useDebounce(titleSearch, 500);
 
-    const isMounted = useRef(false);
-    useEffect(() => {
-        if (isMounted.current) {
-            setPagination(p => ({ ...p, currentPage: 1 }));
-        } else {
-            isMounted.current = true;
-        }
-    }, [debouncedTitleSearch]);
-
+    // Effect for fetching score sets
     useEffect(() => {
         const fetchScoreSets = async () => {
             if (!config.apiKey) { setError("API key is not configured."); setIsLoadingSets(false); return; }
@@ -104,58 +93,20 @@ export function Leaderboard({ config }: LeaderboardProps) {
         fetchScoreSets();
     }, [config]);
 
-    const fetchAllAndSearch = useCallback(async () => {
+    // Main data fetching logic
+    const fetchLeaderboard = useCallback(async () => {
         if (!config.apiKey || !selectedScoreSet) return;
         
-        setIsLoading(true);
-        setLoadingProgress(0);
-        setError(null);
-        setAllData([]);
-        
-        try {
-            const initialResponse = await getLeaderboardPage(config, selectedScoreSet, 1, 100);
-            if (!initialResponse || !initialResponse.data) throw new Error("Invalid response from server");
-
-            const totalPages = initialResponse.last_page;
-            let allEntries = [...initialResponse.data];
-            setLoadingProgress((1 / totalPages) * 100);
-
-            const pagePromises = [];
-            for (let i = 2; i <= totalPages; i++) {
-                pagePromises.push(getLeaderboardPage(config, selectedScoreSet, i, 100));
-            }
-
-            for (const promise of pagePromises) {
-                const response = await promise;
-                 if (response && response.data) {
-                    allEntries = [...allEntries, ...response.data];
-                    setLoadingProgress((response.current_page / totalPages) * 100);
-                }
-            }
-            
-            const filtered = allEntries.filter(entry => entry.title.toLowerCase().includes(debouncedTitleSearch.toLowerCase()));
-            setAllData(filtered);
-            setPagination(p => ({ ...p, total: filtered.length, lastPage: Math.ceil(filtered.length / p.perPage), currentPage: 1 }));
-
-        } catch (err: any) {
-            setError(err.message || "Failed to complete search.");
-        } finally {
-            setIsLoading(false);
-            setLoadingProgress(null);
-        }
-    }, [config, selectedScoreSet, debouncedTitleSearch, pagination.perPage]);
-
-
-    const fetchPaginated = useCallback(async () => {
-        if (!config.apiKey || !selectedScoreSet) return;
         setIsLoading(true);
         setError(null);
         try {
             const sortKeyForApi = sortConfig.key === 'totalScore' ? 'auto_score' : sortConfig.key;
+            // The search logic is now simplified as the API doesn't support it directly.
+            // We pass an empty string for title search to the backend. The filtering happens client-side.
             const response = await getLeaderboardPage(config, selectedScoreSet, pagination.currentPage, pagination.perPage, { key: sortKeyForApi, direction: sortConfig.direction });
             
             if (response && response.data) {
-                setAllData(response.data);
+                setLeaderboard(response.data);
                 setPagination(p => ({ ...p, currentPage: response.current_page, lastPage: response.last_page, total: response.total }));
             } else {
                  throw new Error("Received an invalid response from the server.");
@@ -169,35 +120,15 @@ export function Leaderboard({ config }: LeaderboardProps) {
 
     useEffect(() => {
         if (selectedScoreSet) {
-            if (debouncedTitleSearch) {
-                fetchAllAndSearch();
-            } else {
-                fetchPaginated();
-            }
+            fetchLeaderboard();
         }
-    }, [debouncedTitleSearch, fetchPaginated, fetchAllAndSearch, selectedScoreSet]);
+    }, [selectedScoreSet, pagination.currentPage, pagination.perPage, sortConfig, fetchLeaderboard]);
 
-    const sortedData = useMemo(() => {
-        let sortableItems = [...allData];
-
-        if (debouncedTitleSearch) { // For search results, paginate client-side
-             return sortableItems
-                .sort((a, b) => b.totalScore - a.totalScore)
-                .slice((pagination.currentPage - 1) * pagination.perPage, pagination.currentPage * pagination.perPage);
-        }
-        
-        // For regular view, sort only non-API supported fields
-        if (sortConfig.key === 'applicantName' || sortConfig.key === 'municipality') {
-            sortableItems.sort((a, b) => {
-                const aValue = a[sortConfig.key];
-                const bValue = b[sortConfig.key];
-                if (aValue < bValue) return sortConfig.direction === 'asc' ? -1 : 1;
-                if (aValue > bValue) return sortConfig.direction === 'asc' ? 1 : -1;
-                return 0;
-            });
-        }
-        return sortableItems;
-    }, [allData, sortConfig, pagination, debouncedTitleSearch]);
+    // Client-side filtering for title search
+    const filteredData = useMemo(() => {
+        if (!debouncedTitleSearch) return leaderboard;
+        return leaderboard.filter(entry => entry.title.toLowerCase().includes(debouncedTitleSearch.toLowerCase()));
+    }, [leaderboard, debouncedTitleSearch]);
 
 
     const handleSort = (key: SortableKeys) => {
@@ -217,11 +148,11 @@ export function Leaderboard({ config }: LeaderboardProps) {
         }
     };
 
-    const isEligibleForTagging = (entry: EnrichedLeaderboardEntry) => {
+    const isEligibleForTagging = (entry: LeaderboardEntry) => {
         return entry.totalScore >= 4 && !entry.tags?.includes('Eligible-1');
     };
 
-    const eligibleRows = useMemo(() => sortedData.filter(isEligibleForTagging), [sortedData]);
+    const eligibleRows = useMemo(() => filteredData.filter(isEligibleForTagging), [filteredData]);
 
     const handleSelectRow = (slug: string, checked: boolean) => {
         setSelectedSlugs(prev => checked ? [...prev, slug] : prev.filter(s => s !== slug));
@@ -238,7 +169,7 @@ export function Leaderboard({ config }: LeaderboardProps) {
             await addEligibleTagToApplications(config, selectedSlugs);
             toast({ title: "Success", description: `${selectedSlugs.length} applications tagged successfully.` });
             setSelectedSlugs([]);
-            if (debouncedTitleSearch) fetchAllAndSearch(); else fetchPaginated();
+            fetchLeaderboard();
         } catch (err: any) {
             toast({ title: "Tagging Failed", description: err.message, variant: "destructive" });
         } finally {
@@ -254,10 +185,10 @@ export function Leaderboard({ config }: LeaderboardProps) {
                         <CardTitle className="flex items-center gap-2"><Trophy className="w-5 h-5" /> Leaderboard</CardTitle>
                         <CardDescription>Top ranked applications based on the selected score set.</CardDescription>
                     </div>
-                    <div className="flex items-center gap-2">
+                    <div className="flex items-center gap-2 mt-4 md:mt-0">
                          {selectedSlugs.length > 0 && (
                             <Button onClick={handleTagSelected} disabled={isTagging}>
-                                <Tag className="mr-2 h-4 w-4"/> Tag {selectedSlugs.length} Selected as Eligible-1
+                                <Tag className="mr-2 h-4 w-4"/> Tag {selectedSlugs.length} as Eligible-1
                             </Button>
                         )}
                         <Select value={pagination.perPage.toString()} onValueChange={(value) => setPagination(p => ({...p, perPage: Number(value), currentPage: 1}))}>
@@ -277,7 +208,7 @@ export function Leaderboard({ config }: LeaderboardProps) {
                                 </SelectContent>
                             </Select>
                         )}
-                        <Button variant="outline" size="icon" onClick={debouncedTitleSearch ? fetchAllAndSearch : fetchPaginated} disabled={isLoading || !selectedScoreSet}>
+                        <Button variant="outline" size="icon" onClick={fetchLeaderboard} disabled={isLoading || !selectedScoreSet}>
                             <RefreshCw className={`h-4 w-4 ${isLoading ? 'animate-spin' : ''}`} />
                         </Button>
                     </div>
@@ -288,19 +219,13 @@ export function Leaderboard({ config }: LeaderboardProps) {
                     <div className="relative">
                         <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
                         <Input
-                            placeholder="Search by application title (searches all pages)..."
+                            placeholder="Search by title on current page..."
                             value={titleSearch}
                             onChange={(e) => setTitleSearch(e.target.value)}
                             className="pl-10"
                         />
                     </div>
                 </div>
-                 {loadingProgress !== null && (
-                    <div className="my-4 space-y-2">
-                        <p className="text-sm text-muted-foreground text-center">Searching all applications... {loadingProgress.toFixed(0)}%</p>
-                        <Progress value={loadingProgress} className="w-full" />
-                    </div>
-                )}
                 <div className="rounded-md border">
                     <Table>
                         <TableHeader>
@@ -313,21 +238,23 @@ export function Leaderboard({ config }: LeaderboardProps) {
                                     />
                                 </TableHead>
                                 <TableHead className="w-16">Rank</TableHead>
-                                <TableHead className="cursor-pointer" onClick={() => handleSort('applicantName')}><div className="flex items-center">Applicant {renderSortArrow('applicantName')}</div></TableHead>
-                                <TableHead className="cursor-pointer" onClick={() => handleSort('municipality')}><div className="flex items-center">Municipality {renderSortArrow('municipality')}</div></TableHead>
-                                <TableHead>Application Title</TableHead>
-                                <TableHead className="cursor-pointer" onClick={() => handleSort('totalScore')}><div className="flex items-center">Score {renderSortArrow('totalScore')}</div></TableHead>
+                                <TableHead className="cursor-pointer" onClick={() => handleSort('title')}>
+                                    <div className="flex items-center">Application Title & Tags {renderSortArrow('title')}</div>
+                                </TableHead>
+                                <TableHead className="cursor-pointer" onClick={() => handleSort('totalScore')}>
+                                    <div className="flex items-center">Score {renderSortArrow('totalScore')}</div>
+                                </TableHead>
                             </TableRow>
                         </TableHeader>
                         <TableBody>
                             {isLoading ? (
                                 Array.from({ length: pagination.perPage }).map((_, i) => <SkeletonRow key={i} />)
                             ) : error ? (
-                                <TableRow><TableCell colSpan={6} className="h-24 text-center text-red-500"><AlertCircle className="mx-auto h-6 w-6 mb-2" />{error}</TableCell></TableRow>
-                            ) : sortedData.length > 0 ? (
-                                sortedData.map((entry, index) => {
+                                <TableRow><TableCell colSpan={4} className="h-24 text-center text-red-500"><AlertCircle className="mx-auto h-6 w-6 mb-2" />{error}</TableCell></TableRow>
+                            ) : filteredData.length > 0 ? (
+                                filteredData.map((entry, index) => {
                                     const isEligible = isEligibleForTagging(entry);
-                                    const rank = debouncedTitleSearch ? "Search" : (pagination.currentPage - 1) * pagination.perPage + index + 1;
+                                    const rank = (pagination.currentPage - 1) * pagination.perPage + index + 1;
                                     return (
                                     <TableRow key={entry.slug}>
                                         <TableCell>
@@ -339,9 +266,14 @@ export function Leaderboard({ config }: LeaderboardProps) {
                                             )}
                                         </TableCell>
                                         <TableCell className="font-bold text-lg">{rank}</TableCell>
-                                        <TableCell>{entry.applicantName}</TableCell>
-                                        <TableCell>{entry.municipality}</TableCell>
-                                        <TableCell>{entry.title}</TableCell>
+                                        <TableCell>
+                                            <div>{entry.title}</div>
+                                            <div className="flex flex-wrap gap-1 mt-2">
+                                                {entry.tags.map(tag => (
+                                                    <Badge key={tag} variant="secondary" className="font-normal">{tag}</Badge>
+                                                ))}
+                                            </div>
+                                        </TableCell>
                                         <TableCell>
                                             <TooltipProvider>
                                                 <Tooltip>
@@ -365,7 +297,7 @@ export function Leaderboard({ config }: LeaderboardProps) {
                                     </TableRow>
                                 )})
                             ) : (
-                                <TableRow><TableCell colSpan={6} className="h-24 text-center">No results found.</TableCell></TableRow>
+                                <TableRow><TableCell colSpan={4} className="h-24 text-center">No results found.</TableCell></TableRow>
                             )}
                         </TableBody>
                     </Table>

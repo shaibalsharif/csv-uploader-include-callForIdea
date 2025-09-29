@@ -1,7 +1,5 @@
 "use server";
 
-import { getApplicantDataBySlugs } from "./history";
-
 // --- Helper to add a delay ---
 function sleep(ms: number) {
   return new Promise((resolve) => setTimeout(resolve, ms));
@@ -31,10 +29,6 @@ async function apiRequest(endpoint: string, apiKey: string) {
   return response.json();
 }
 
-async function getApplicationDetails(config: { apiKey: string }, slug: string) {
-  return apiRequest(`/application/${slug}`, config.apiKey);
-}
-
 export async function getScoreSets(config: {
   apiKey: string;
 }): Promise<{ slug: string; name: { en_GB: string } }[]> {
@@ -52,65 +46,22 @@ const calculateTotalScore = (entry: any): number => {
   return entry.auto_score || 0;
 };
 
-const enrichData = async (entries: any[], config: { apiKey: string }) => {
-  const slugs = entries.map((entry: any) => entry?.slug).filter(Boolean);
-  if (slugs.length === 0) return [];
-
-  const applicantDataMap = await getApplicantDataBySlugs(slugs);
-  const missingSlugs = slugs.filter((slug) => !applicantDataMap.has(slug));
-
-  if (missingSlugs.length > 0) {
-    for (const slug of missingSlugs) {
-      try {
-        const detail = await getApplicationDetails(config, slug);
-        if (detail && detail.slug) {
-          const municipalityField = detail.application_fields?.find(
-            (f: any) => f.slug === "rDkKljjz"
-          );
-         
-
-          const municipality =
-            municipalityField?.value ||
-            municipalityField?.translated.en_GB ||
-            "N/A";
-
-          applicantDataMap.set(detail.slug, {
-            name: detail.applicant.name,
-            municipality: municipality,
-          });
-        }
-        await sleep(200);
-      } catch (error) {
-        console.error(
-          `Failed to fetch fallback details for slug ${slug}:`,
-          error
-        );
-      }
-    }
-  }
-
-  return entries.map((entry: any) => {
-    const slug = entry?.slug;
-    const applicantInfo = applicantDataMap.get(slug);
-    return {
-      slug: entry.slug,
-      tags: entry.tags
-        ? entry.tags.split(",").map((t: string) => t.trim())
-        : [],
-      title: entry.title || "Untitled Application",
-      applicantName: applicantInfo?.name || entry.applicant?.name || "N/A",
-      municipality: applicantInfo?.municipality || "N/A",
-      totalScore: calculateTotalScore(entry),
-      scoreBreakdown:
-        entry.scores?.criteria?.map((c: any) => ({
-          name: c.name?.en_GB || "Unnamed Criterion",
-          score: c.final_score || `${c.value || 0}`,
-        })) || [],
-    };
-  });
+// --- SIMPLIFIED data transformation ---
+const transformApiData = (entries: any[]) => {
+  if (!entries) return [];
+  return entries.map((entry: any) => ({
+    slug: entry.slug,
+    tags: entry.tags ? entry.tags.split(",").map((t: string) => t.trim()) : [],
+    title: entry.title || "Untitled Application",
+    totalScore: calculateTotalScore(entry),
+    scoreBreakdown:
+      entry.scores?.criteria?.map((c: any) => ({
+        name: c.name?.en_GB || "Unnamed Criterion",
+        score: c.final_score || `${c.value || 0}`,
+      })) || [],
+  }));
 };
 
-// --- UPDATED to fetch a single page and enrich it ---
 export async function getLeaderboardPage(
   config: { apiKey: string },
   scoreSetSlug: string,
@@ -140,12 +91,14 @@ export async function getLeaderboardPage(
     `/leaderboard?${query.toString()}`,
     config.apiKey
   );
-  const enrichedPageData = await enrichData(response.data, config);
+  
+  const transformedData = transformApiData(response.data);
 
   return {
-    data: enrichedPageData,
+    data: transformedData,
     current_page: response.current_page,
     last_page: response.last_page,
     total: response.total,
   };
 }
+

@@ -69,7 +69,7 @@ const CustomLegend = ({ payload }: any) => {
   }
   return (
     <div className="flex items-center justify-center flex-wrap gap-2">
-      {payload.map((entry: any, index: number) => (
+      {payload?.map((entry: any, index: number) => (
         <Badge key={`item-${index}`} variant="outline" className="flex items-center gap-1.5 px-2 py-1">
           <span
             className="h-2.5 w-2.5 rounded-full"
@@ -112,7 +112,7 @@ const PieChartGraphic = ({ data, tooltipFormatter }: { data: any[], tooltipForma
             );
           }}
         >
-          {data.map((entry, index) => <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />)}
+          {data?.map((entry, index) => <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />)}
         </Pie>
         <Tooltip formatter={tooltipFormatter || defaultFormatter} />
         <Legend content={<CustomLegend />} wrapperStyle={{ paddingTop: "30px" }} />
@@ -129,7 +129,7 @@ const TableGraphic = ({ data }: { data: any[] }) => (
     <Table>
       <TableHeader><TableRow><TableHead>Value</TableHead><TableHead className="text-right">Count</TableHead></TableRow></TableHeader>
       <TableBody>
-        {data.map((item, index) => (
+        {data?.map((item, index) => (
           <TableRow key={`${item.name}-${index}`}>
             <TableCell className="font-medium">
               {item.name}
@@ -245,7 +245,7 @@ export default function AnalysisPage() {
       // 2. Capture Pie Charts
       const pieChartContainer = document.getElementById('pie-charts-export')!;
       const pieChartElements = pieChartContainer.querySelectorAll('.pie-chart-export');
-      chartImages.pies = await Promise.all(Array.from(pieChartElements).map(async (el) => {
+      chartImages.pies = await Promise.all(Array.from(pieChartElements)?.map(async (el) => {
         const canvas = await html2canvas(el as HTMLElement, { scale: 2 });
         return {
           id: el.getAttribute('data-id')!,
@@ -258,7 +258,7 @@ export default function AnalysisPage() {
       const stackedBarChartContainer = document.getElementById('stacked-bar-charts-export')!;
       const stackedBarChartElements = stackedBarChartContainer.querySelectorAll('.bar-chart-export');
 
-      chartImages.stackedBars = await Promise.all(Array.from(stackedBarChartElements).map(async (el) => {
+      chartImages.stackedBars = await Promise.all(Array.from(stackedBarChartElements)?.map(async (el) => {
         const canvas = await html2canvas(el as HTMLElement, { scale: 2 });
         return {
           id: el.getAttribute('data-id')!,
@@ -346,11 +346,11 @@ export default function AnalysisPage() {
   const renderStackedBarChartsForExport = (dataSets: any) => {
     return (
       <div className="grid grid-cols-1 gap-8 pt-4">
-        {Object.entries(dataSets).map(([key, { chartsData, categories }]: any) => (
+        {Object.entries(dataSets)?.map(([key, { chartsData, categories }]: any) => (
           <div key={key} className="space-y-4 bar-chart-export" data-id={key} data-title={key === 'gender' ? 'Gender' : key === 'age' ? 'Age Range' : 'Challenge Statement'}>
             <h3 className="text-lg font-bold text-center mt-8">{key === 'gender' ? 'Gender' : key === 'age' ? 'Age Range' : 'Challenge Statement'} Breakdown by Municipality</h3>
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: '2rem' }}>
-              {chartsData.map(({ municipality, data }: any) => (
+              {chartsData?.map(({ municipality, data }: any) => (
                 <div key={municipality} style={{ width: '100%', height: '300px' }}>
                   <h4 className="text-base font-semibold text-center mb-2">{municipality}</h4>
                   <ResponsiveContainer width="100%" height="100%">
@@ -360,7 +360,7 @@ export default function AnalysisPage() {
                       <YAxis allowDecimals={false} />
                       <Tooltip />
                       <Legend />
-                      {categories.map((category: any, index: number) => (
+                      {categories?.map((category: any, index: number) => (
                         <Bar key={category} dataKey={category} stackId="a" fill={COLORS[index % COLORS.length]} />
                       ))}
                     </BarChart>
@@ -484,7 +484,7 @@ export default function AnalysisPage() {
                   </p>
                 </CardContent>
               </Card>
-              {topMunicipalities.map((muni: { name: string, total: number, online: number, offline: number }) => (
+              {topMunicipalities?.map((muni: { name: string, total: number, online: number, offline: number }) => (
                 <Card key={muni.name} className="transition-all duration-300 hover:shadow-xl">
                   <CardHeader className="pb-2"><CardTitle className="text-base font-medium">{muni.name}</CardTitle></CardHeader>
                   <CardContent>

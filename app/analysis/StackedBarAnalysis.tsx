@@ -56,7 +56,7 @@ const CustomTooltip = ({ active, payload, label }: any) => {
         {data.translatedName && (
           <p className="text-xs text-muted-foreground italic mb-2">{data.translatedName}</p>
         )}
-        {payload.map((entry: any, index: number) => (
+        {payload?.map((entry: any, index: number) => (
           <p key={`item-${index}`} style={{ color: entry.color }} className="text-sm">
             {`${entry.name}: ${entry.value}`}
           </p>
@@ -70,10 +70,10 @@ const CustomTooltip = ({ active, payload, label }: any) => {
 // New function to process data for a specific dimension
 const processStackedBarData = (apps: Application[], municipalityData: any[], dimension: string) => {
     const psCodeSlugs = ['gkknPnQp', 'jDJaNYGG', 'RjAnzBZJ', 'OJBPQyGP'];
-    const topMunicipalities = municipalityData.slice(0, 4).map(m => m.name);
-    const allCategories = [...new Set(apps.map((app: Application) => app.category?.name?.en_GB || "Uncategorized"))].sort();
+    const topMunicipalities = municipalityData?.slice(0, 4)?.map(m => m.name);
+    const allCategories = [...new Set(apps?.map((app: Application) => app.category?.name?.en_GB || "Uncategorized"))].sort();
 
-    const chartsData = topMunicipalities.map(municipality => {
+    const chartsData = topMunicipalities?.map(municipality => {
       const muniApps = apps.filter((app: Application) => extractFieldValue(app, "rDkKljjz") === municipality);
       const groupedByDimension = muniApps.reduce((acc, app: Application) => {
         let key, translation = "";
@@ -98,7 +98,7 @@ const processStackedBarData = (apps: Application[], municipalityData: any[], dim
         return acc;
       }, {} as Record<string, { apps: Application[], translation: string }>);
 
-      const chartData = Object.entries(groupedByDimension).map(([name, group]) => {
+      const chartData = Object.entries(groupedByDimension)?.map(([name, group]) => {
         const { apps: groupedApps, translation } = group;
         const counts = allCategories.reduce((acc, category) => {
           acc[category] = 0;
@@ -160,7 +160,7 @@ export function StackedBarAnalysis({ apps, municipalityData }: { apps: Applicati
     
     return (
         <CardContent className="grid gap-8 pt-4 md:grid-cols-2">
-            {chartsData.map(({ municipality, data }) => (
+            {chartsData?.map(({ municipality, data }) => (
                 <div key={municipality} className="group">
                     <h3 className="text-lg font-semibold text-center mb-2 transition-all duration-300 group-hover:text-primary group-hover:scale-105">
                         {municipality}
@@ -172,7 +172,7 @@ export function StackedBarAnalysis({ apps, municipalityData }: { apps: Applicati
                             <YAxis allowDecimals={false} />
                             <Tooltip content={<CustomTooltip />} />
                             <Legend />
-                            {categories.map((category, index) => (
+                            {categories?.map((category, index) => (
                                 <Bar key={category} dataKey={category} stackId="a" fill={COLORS[index % COLORS.length]} />
                             ))}
                         </BarChart>
@@ -203,7 +203,7 @@ export function StackedBarAnalysis({ apps, municipalityData }: { apps: Applicati
               <SelectValue placeholder="Select a breakdown..." />
             </SelectTrigger>
             <SelectContent>
-              {dimensionOptions.map(option => (
+              {dimensionOptions?.map(option => (
                 <SelectItem key={option.value} value={option.value}>
                   {option.label}
                 </SelectItem>

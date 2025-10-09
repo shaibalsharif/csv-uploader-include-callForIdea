@@ -75,8 +75,8 @@ export function BatchHistory() {
   }
 
   return (
-    <div className="space-y-6">
-      <Card>
+    <div className="space-y-6 ">
+      <Card className="h-full">
         <CardHeader>
           <CardTitle className="flex items-center gap-2">
             <Calendar className="w-5 h-5" />
@@ -96,7 +96,7 @@ export function BatchHistory() {
               <p className="text-sm">Process your first CSV file to see history here</p>
             </div>
           ) : (
-            <ScrollArea className="h-96">
+            <ScrollArea className="h-full">
               <div className="space-y-4">
                 {batches.map((batch) => (
                   <Card key={batch.id} className="border-border">

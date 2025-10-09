@@ -106,7 +106,7 @@ export function ApplicationDetailsModal({ isOpen, onClose, batchId }: Applicatio
             <p>Failed to load batch details.</p>
           </div>
         ) : (
-          <div className="flex-1 overflow-hidden grid grid-cols-1 md:grid-cols-2 gap-6">
+          <div className="flex-1 overflow-auto grid grid-cols-1 md:grid-cols-2 gap-6">
             <div className="flex flex-col">
               <div className="flex items-center justify-between mb-3">
                 <h3 className="text-lg font-semibold ">Applications ({batchDetails.applications.length})</h3>

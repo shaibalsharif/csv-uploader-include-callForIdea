@@ -25,8 +25,13 @@ const extractFieldValue = (app: any, slug: string): string => {
   const field = app.raw_fields?.find((f: any) => f.slug === slug);
   const value = field?.value;
 
-  if (typeof value === 'object' && value !== null) {
-    return field?.translated?.en_GB || value.en_GB || value.en || JSON.stringify(value);
+  if (typeof value === "object" && value !== null) {
+    return (
+      field?.translated?.en_GB ||
+      value.en_GB ||
+      value.en ||
+      JSON.stringify(value)
+    );
   }
   return value !== null && value !== undefined ? String(value) : "N/A";
 };
@@ -38,7 +43,9 @@ const extractFieldValue = (app: any, slug: string): string => {
  * @returns The raw PS Code value (e.g., "Char-PS-1").
  */
 const extractPsCodeValue = (app: any, possibleSlugs: string[]): string => {
-  const field = app.raw_fields?.find((f: any) => possibleSlugs.includes(f.slug));
+  const field = app.raw_fields?.find((f: any) =>
+    possibleSlugs.includes(f.slug)
+  );
   return field?.value || "N/A";
 };
 
@@ -49,7 +56,9 @@ const extractPsCodeValue = (app: any, possibleSlugs: string[]): string => {
  * @returns The translated text.
  */
 const getPsCodeTranslation = (app: any, possibleSlugs: string[]): string => {
-  const field = app.raw_fields?.find((f: any) => possibleSlugs.includes(f.slug));
+  const field = app.raw_fields?.find((f: any) =>
+    possibleSlugs.includes(f.slug)
+  );
   return field?.translated?.en_GB || "";
 };
 
@@ -82,7 +91,7 @@ async function upsertApplications(applications: Application[]) {
       app.created,
       app.updated,
       JSON.stringify(app.category),
-      JSON.stringify(app.application_fields),
+      JSON.stringify(app.application_fields)
     );
   });
 
@@ -104,10 +113,12 @@ async function upsertApplications(applications: Application[]) {
 // --- ACTION 1: For Initial Page Load (Reads from DB only) ---
 export async function getAnalyticsFromDB() {
   try {
-    const { rows: logRows } = await sql`SELECT last_run_at FROM cron_job_logs WHERE job_name = 'sync-goodgrants-applications'`;
+    const { rows: logRows } =
+      await sql`SELECT last_run_at FROM cron_job_logs WHERE job_name = 'sync-goodgrants-applications'`;
     const lastSyncTime = logRows[0]?.last_run_at || null;
 
-    const { rows: apps } = await sql`SELECT slug, created_at, updated_at, category, raw_fields FROM goodgrants_applications;`;
+    const { rows: apps } =
+      await sql`SELECT slug, created_at, updated_at, category, raw_fields FROM goodgrants_applications;`;
     if (apps.length === 0) {
       return { lastSyncTime, isEmpty: true };
     }
@@ -115,7 +126,9 @@ export async function getAnalyticsFromDB() {
     const totalApplications = apps.length;
 
     const cutoffDate = new Date("2025-08-31T23:59:59.999Z");
-    const onlineApplications = apps.filter(app => new Date(app.created_at) <= cutoffDate).length;
+    const onlineApplications = apps.filter(
+      (app) => new Date(app.created_at) <= cutoffDate
+    ).length;
     const offlineApplications = totalApplications - onlineApplications;
 
     const createdGrowthData = apps.reduce((acc, app) => {
@@ -131,95 +144,107 @@ export async function getAnalyticsFromDB() {
     }, {} as Record<string, number>);
 
     // Combine and sort all unique dates
-    const allDates = [...new Set([...Object.keys(createdGrowthData), ...Object.keys(updatedGrowthData)])].sort();
+    const allDates = [
+      ...new Set([
+        ...Object.keys(createdGrowthData),
+        ...Object.keys(updatedGrowthData),
+      ]),
+    ].sort();
 
-    const lineChartData = allDates.map(date => ({
+    const lineChartData = allDates.map((date) => ({
       date: date,
       createdAtCount: createdGrowthData[date] || 0,
       updatedAtCount: updatedGrowthData[date] || 0,
     }));
-    
+
     const categoryData = apps.reduce((acc, app) => {
       const categoryName = app.category?.name?.en_GB || "Uncategorized";
       acc[categoryName] = (acc[categoryName] || 0) + 1;
       return acc;
     }, {} as Record<string, number>);
-    const categoryPieData = Object.entries(categoryData).map(([name, value]) => ({ name, value }));
-    
+    const categoryPieData = Object.entries(categoryData).map(
+      ([name, value]) => ({ name, value })
+    );
+
     const analyzeField = (slug: string) => {
       const counts = apps.reduce((acc, app) => {
         const value = extractFieldValue(app, slug);
         acc[value] = (acc[value] || 0) + 1;
         return acc;
       }, {} as Record<string, number>);
-      return Object.entries(counts).map(([name, value]) => ({ name, value })).sort((a, b) => b.value - a.value);
+      return Object.entries(counts)
+        .map(([name, value]) => ({ name, value }))
+        .sort((a, b) => b.value - a.value);
     };
 
     const analyzeFieldWithOnlineOffline = (slug: string) => {
-        const counts = apps.reduce((acc, app) => {
-            const value = extractFieldValue(app, slug);
-            if (!acc[value]) {
-                acc[value] = { total: 0, online: 0, offline: 0 };
-            }
-            acc[value].total++;
-            if (new Date(app.created_at) <= cutoffDate) {
-                acc[value].online++;
-            } else {
-                acc[value].offline++;
-            }
-            return acc;
-        }, {} as Record<string, { total: number, online: number, offline: number }>);
-        
-        return Object.entries(counts).map(([name, data]) => ({ name, ...data })).sort((a, b) => b.total - a.total);
-    };
-    
-    const psCodeSlugs = ['gkknPnQp', 'jDJaNYGG', 'RjAnzBZJ', 'OJBPQyGP'];
-    const psCodeCounts = apps.reduce((acc, app) => {
-        const value = extractPsCodeValue(app, psCodeSlugs);
-        if (value === "N/A") return acc;
+      const counts = apps.reduce((acc, app) => {
+        const value = extractFieldValue(app, slug);
         if (!acc[value]) {
-            const translation = getPsCodeTranslation(app, psCodeSlugs);
-            acc[value] = { count: 0, translation: translation };
+          acc[value] = { total: 0, online: 0, offline: 0 };
         }
-        acc[value].count++;
+        acc[value].total++;
+        if (new Date(app.created_at) <= cutoffDate) {
+          acc[value].online++;
+        } else {
+          acc[value].offline++;
+        }
         return acc;
-    }, {} as Record<string, { count: number, translation: string }>);
+      }, {} as Record<string, { total: number; online: number; offline: number }>);
+
+      return Object.entries(counts)
+        .map(([name, data]) => ({ name, ...data }))
+        .sort((a, b) => b.total - a.total);
+    };
+
+    const psCodeSlugs = ["gkknPnQp", "jDJaNYGG", "RjAnzBZJ", "OJBPQyGP"];
+    const psCodeCounts = apps.reduce((acc, app) => {
+      const value = extractPsCodeValue(app, psCodeSlugs);
+      if (value === "N/A") return acc;
+      if (!acc[value]) {
+        const translation = getPsCodeTranslation(app, psCodeSlugs);
+        acc[value] = { count: 0, translation: translation };
+      }
+      acc[value].count++;
+      return acc;
+    }, {} as Record<string, { count: number; translation: string }>);
 
     const psCodeData = Object.entries(psCodeCounts)
-        .map(([name, data]) => ({ 
-            name: name, 
-            value: data.count, 
-            translation: data.translation 
-        }))
-        .sort((a, b) => {
-            const regex = /^([a-z]+)-ps-(\d+)$/i;
-            const aMatch = a.name.match(regex);
-            const bMatch = b.name.match(regex);
-            if (aMatch && bMatch) {
-                const aPrefix = aMatch[1];
-                const bPrefix = bMatch[1];
-                if (aPrefix !== bPrefix) return aPrefix.localeCompare(bPrefix);
-                return parseInt(aMatch[2], 10) - parseInt(bMatch[2], 10);
-            }
-            return a.name.localeCompare(b.name);
-        });
+      .map(([name, data]) => ({
+        name: name,
+        value: data.count,
+        translation: data.translation,
+      }))
+      .sort((a, b) => {
+        const regex = /^([a-z]+)-ps-(\d+)$/i;
+        const aMatch = a.name.match(regex);
+        const bMatch = b.name.match(regex);
+        if (aMatch && bMatch) {
+          const aPrefix = aMatch[1];
+          const bPrefix = bMatch[1];
+          if (aPrefix !== bPrefix) return aPrefix.localeCompare(bPrefix);
+          return parseInt(aMatch[2], 10) - parseInt(bMatch[2], 10);
+        }
+        return a.name.localeCompare(b.name);
+      });
 
     const municipalityData = analyzeField("rDkKljjz");
     const ageRangeData = analyzeField("xjzONPwj");
     const genderData = analyzeField("rojNQzOz");
-    const municipalityDataWithOnlineOffline = analyzeFieldWithOnlineOffline("rDkKljjz");
+    const municipalityDataWithOnlineOffline =
+      analyzeFieldWithOnlineOffline("rDkKljjz");
 
     const ageOrder = [
-        'Below 18',
-        '18 - 25 years',
-        '26 - 35 years',
-        '36 - 45 years',
-        '46 - 55 years',
-        '56 - 65 years',
-        'Above 65'
+      "Below 18",
+      "18 - 25 years",
+      "26 - 35 years",
+      "36 - 45 years",
+      "46 - 55 years",
+      "56 - 65 years",
+      "Above 65",
     ];
     ageRangeData.sort((a, b) => {
-        return ageOrder.indexOf(a.name) - ageOrder.indexOf(b.name);
+      return ageOrder.indexOf(a.name) - ageOrder.indexOf(b.name);
     });
 
     return {
@@ -246,7 +271,7 @@ export async function getAnalyticsFromDB() {
 // --- ACTION 2: For Live Sync Button (Hits external API) ---
 export async function triggerLiveSync() {
   console.log("\n🚀 Live sync process started...");
-  const DELAY_BETWEEN_REQUESTS_MS = 250;
+  const DELAY_BETWEEN_REQUESTS_MS = 500;
   const config = { apiKey: process.env.GOODGRANTS_API_KEY! };
   if (!config.apiKey) {
     console.error("❌ FATAL: Server configuration error: API key not found.");
@@ -254,11 +279,15 @@ export async function triggerLiveSync() {
   }
 
   try {
-    const { rows: lastSyncRows } = await sql`SELECT MAX(updated_at) as last_updated FROM goodgrants_applications;`;
+    const { rows: lastSyncRows } =
+      await sql`SELECT MAX(updated_at) as last_updated FROM goodgrants_applications;`;
     const lastSyncDate: string | null = lastSyncRows[0]?.last_updated || null;
+    console.log(lastSyncDate);
 
     if (lastSyncDate) {
-      console.log(`🔍 Found last sync date. Fetching applications updated after: ${lastSyncDate}`);
+      console.log(
+        `🔍 Found last sync date. Fetching applications updated after: ${lastSyncDate}`
+      );
     } else {
       console.log("📂 No previous sync data found. Fetching all applications.");
     }
@@ -284,8 +313,12 @@ export async function triggerLiveSync() {
 
       const applicationsOnPage = listResponse.data;
       if (applicationsOnPage && applicationsOnPage.length > 0) {
-        const slugsOnPage = applicationsOnPage.map((app: { slug: string }) => app.slug);
-        console.log(`   -> Found ${slugsOnPage.length} summaries on this page.`);
+        const slugsOnPage = applicationsOnPage.map(
+          (app: { slug: string }) => app.slug
+        );
+        console.log(
+          `   -> Found ${slugsOnPage.length} summaries on this page.`
+        );
         console.log(`   -> Fetching details sequentially...`);
 
         const detailedApplications: Application[] = [];
@@ -293,13 +326,19 @@ export async function triggerLiveSync() {
           const details = await getApplicationDetails(config, slug);
           detailedApplications.push(details);
           if (detailedApplications.length % 10 === 0) {
-            console.log(`      ...fetched ${detailedApplications.length} of ${slugsOnPage.length} details.`);
+            console.log(
+              `      ...fetched ${detailedApplications.length} of ${slugsOnPage.length} details.`
+            );
           }
           await sleep(DELAY_BETWEEN_REQUESTS_MS);
         }
-        console.log(`   -> Details for all ${detailedApplications.length} applications received.`);
-        
-        console.log(`   -> Saving ${detailedApplications.length} records to the database...`);
+        console.log(
+          `   -> Details for all ${detailedApplications.length} applications received.`
+        );
+
+        console.log(
+          `   -> Saving ${detailedApplications.length} records to the database...`
+        );
         await upsertApplications(detailedApplications);
         console.log(`   -> Database updated successfully.`);
 
@@ -322,9 +361,10 @@ export async function triggerLiveSync() {
       SET last_run_at = ${successTime}, status = 'success', details = ${`Manual sync completed. Synced ${totalSynced} applications.`}
       WHERE job_name = 'sync-goodgrants-applications';
     `;
-    console.log(`\n🎉 Sync successful! Synced a total of ${totalSynced} applications.`);
+    console.log(
+      `\n🎉 Sync successful! Synced a total of ${totalSynced} applications.`
+    );
     return { success: true, syncedCount: totalSynced };
-    
   } catch (error: any) {
     console.error("❌ Live sync failed:", error);
     await sql`

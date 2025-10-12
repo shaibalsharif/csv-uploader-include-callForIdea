@@ -7,7 +7,7 @@ import { getApplications, getApplicationDetails } from '../actions/application';
 // Set to a number (e.g., 50) for testing, or null to sync all applications.
 const TOTAL_LIMIT = 50; 
 // CHANGED: Delay between each SINGLE request to be kind to the API. 250ms is a safe starting point.
-const DELAY_BETWEEN_REQUESTS_MS = 500; 
+const DELAY_BETWEEN_REQUESTS_MS = 350; 
 
 // --- Helper Functions ---
 const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));

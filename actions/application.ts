@@ -1,4 +1,6 @@
 "use server";
+import { sql } from "@vercel/postgres"; // NEW IMPORT
+
 
 const API_BASE_URL = "https://api.cr4ce.com";
 const API_VERSION_HEADER = "application/vnd.Creative Force.v2.3+json";
@@ -79,7 +81,7 @@ export async function getApplications(config: { apiKey: string }, params: FetchP
 }
 
 export async function getApplicationDetails(config: { apiKey: string }, slug: string) { return apiRequest(`/application/${slug}`, 'GET', config.apiKey); }
-export async function archiveApplication(config: { apiKey: string }, slug: string) { return apiRequest(`/application/${slug}/archive`, 'PUT', config.apiKey); }
+// export async function archiveApplication(config: { apiKey: string }, slug: string) { return apiRequest(`/application/${slug}/archive`, 'PUT', config.apiKey); }
 export async function unarchiveApplication(config: { apiKey: string }, slug: string) { return apiRequest(`/application/${slug}/archive`, 'DELETE', config.apiKey); }
 export async function deleteApplication(config: { apiKey: string }, slug: string) { return apiRequest(`/application/${slug}`, 'DELETE', config.apiKey); }
 export async function restoreApplication(config: { apiKey: string }, slug: string) { return apiRequest(`/application/${slug}/restore`, 'PUT', config.apiKey); }
@@ -98,7 +100,21 @@ export async function addTags(config: any, appSlug: string, tags: string[]) {
   }
   return { success: true, message: `Successfully added all ${tags.length} tags.` };
 }
-
+// NEW FUNCTION: Local Archive implementation
+export async function archiveApplication(config: { apiKey: string }, slug: string) {
+  try {
+    // This now only updates the local_status to 'archived' in the DB
+    await sql`
+      UPDATE goodgrants_applications
+      SET local_status = 'archived'
+      WHERE slug = ${slug};
+    `;
+    return { success: true, message: `Application ${slug} locally archived.` };
+  } catch (error) {
+    console.error("Local Archive Error:", error);
+    throw new Error("Failed to update application status to 'archived' in local database.");
+  }
+}
 export async function addEligibleTagToApplications(config: { apiKey: string }, slugs: string[]) {
     const { apiKey } = config;
     const tagToAdd = "Eligible-1";

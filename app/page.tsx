@@ -6,7 +6,7 @@ import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 //import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group"
-import { Upload, FileText, Settings, Database, AlertCircle, XCircle, Trophy, GanttChartSquare } from "lucide-react" // Added Trophy
+import { Upload, FileText, Settings, Database, AlertCircle, XCircle, Trophy, GanttChartSquare, Zap } from "lucide-react" // Added Trophy
 import { Alert, AlertDescription } from "@/components/ui/alert"
 import { CSVUploader } from "@/components/csv-uploader"
 import { ProcessingDashboard } from "@/components/processing-dashboard"
@@ -16,10 +16,12 @@ import { ApplicationManager } from "@/components/ApplicationManager"
 import { Leaderboard } from "@/components/Leaderboard"
 import Link from "next/link"
 import SpecialButton from "@/components/SpecialButton"
+import { DuplicateFinder } from "@/components/DuplicateFinder" // NEW
+
 
 export default function HomePage() {
   // Added 'leaderboard' to the possible tab states
-  const [activeTab, setActiveTab] = useState<"upload" | "history" | "failed" | "manage" | "leaderboard">("upload")
+  const [activeTab, setActiveTab] = useState<"upload" | "history" | "failed" | "manage" | "leaderboard" | "duplicate">("upload")
   const [csvFile, setCsvFile] = useState<File | null>(null)
   const [processingMode, setProcessingMode] = useState<"handsfree" | "interruption">("handsfree")
   const [isCompleted, setIsCompleted] = useState(false)
@@ -145,10 +147,13 @@ export default function HomePage() {
         return <ApplicationManager config={config} />;
       case "leaderboard": // New case for the leaderboard
         return <Leaderboard config={config} />;
+      case "duplicate": // NEW CASE
+        return <DuplicateFinder config={config} />;
       default:
         return null;
     }
   }
+
 
   return (
     <div className="min-h-screen bg-background">
@@ -211,6 +216,15 @@ export default function HomePage() {
             <Trophy className="w-4 h-4" />
             Leaderboard
           </Button>
+          {/* New Duplicate Finder Button (NEW) */}
+          <Button
+            variant={activeTab === "duplicate" ? "default" : "outline"}
+            onClick={() => setActiveTab("duplicate")}
+            className="flex items-center gap-2"
+          >
+            <Zap className="w-4 h-4" />
+            Find Duplicates
+          </Button>
         </div>
 
         <div className="space-y-6">
@@ -220,4 +234,3 @@ export default function HomePage() {
     </div>
   )
 }
-

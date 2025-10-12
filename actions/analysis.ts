@@ -1,3 +1,5 @@
+//csv-uploader-include-callForIdea/actions/analysis.ts
+
 "use server";
 
 import { sql } from "@vercel/postgres";
@@ -5,6 +7,20 @@ import { getApplications, getApplicationDetails } from "@/actions/application";
 
 // --- Type Definitions ---
 type Application = { [key: string]: any };
+
+export interface AppRawData {
+  slug: string;
+  title: string;
+  raw_fields: any;
+  applicant_name: string;
+  applicant_email: string;
+  status: string;
+  local_status: string; // ADDED
+}
+
+// --- Constants for Filtering ---
+const TARGET_APPLICANT_EMAIL = "include.call.for.ideas@gmail.com";
+const TARGET_APPLICANT_NAME = "Include Apply Account";
 
 // --- Helper Functions ---
 
@@ -16,7 +32,6 @@ const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 
 /**
  * Robustly extracts a field's display value from an application's raw_fields array.
- * It handles both simple string values and complex object values with language keys.
  * @param app - The application object.
  * @param slug - The unique slug of the field to extract.
  * @returns The display value as a string.
@@ -117,8 +132,9 @@ export async function getAnalyticsFromDB() {
       await sql`SELECT last_run_at FROM cron_job_logs WHERE job_name = 'sync-goodgrants-applications'`;
     const lastSyncTime = logRows[0]?.last_run_at || null;
 
+    // Filter by active status for analytics by default
     const { rows: apps } =
-      await sql`SELECT slug, created_at, updated_at, category, raw_fields FROM goodgrants_applications;`;
+      await sql`SELECT slug, created_at, updated_at, category, raw_fields FROM goodgrants_applications WHERE local_status = 'active';`;
     if (apps.length === 0) {
       return { lastSyncTime, isEmpty: true };
     }
@@ -271,7 +287,7 @@ export async function getAnalyticsFromDB() {
 // --- ACTION 2: For Live Sync Button (Hits external API) ---
 export async function triggerLiveSync() {
   console.log("\n🚀 Live sync process started...");
-  const DELAY_BETWEEN_REQUESTS_MS = 500;
+  const DELAY_BETWEEN_REQUESTS_MS = 350;
   const config = { apiKey: process.env.GOODGRANTS_API_KEY! };
   if (!config.apiKey) {
     console.error("❌ FATAL: Server configuration error: API key not found.");
@@ -373,5 +389,40 @@ export async function triggerLiveSync() {
       WHERE job_name = 'sync-goodgrants-applications';
     `;
     return { success: false, error: error.message };
+  }
+}
+// --- ACTION 3: For Duplicate Finder (Reads all eligible raw data from DB) ---
+export async function getRawApplicationsForScan(): Promise<AppRawData[]> {
+  try {
+    // Filter applications by the required applicant account AND local_status = 'active'
+    const { rows: apps } =
+      await sql<AppRawData>`
+        SELECT slug, title, raw_fields, applicant_name, applicant_email, status, local_status
+        FROM goodgrants_applications
+        WHERE applicant_email = ${TARGET_APPLICANT_EMAIL} 
+          AND applicant_name = ${TARGET_APPLICANT_NAME}
+          AND local_status = 'active'; 
+      `;
+    return apps;
+  } catch (error) {
+    console.error("Failed to get raw applications for scan:", error);
+    return [];
+  }
+}
+
+
+// NEW ACTION: Fetch single application details from local DB
+export async function getApplicationDetailsFromDB(slug: string): Promise<AppRawData | null> {
+  try {
+    const { rows } = await sql<AppRawData>`
+      SELECT slug, title, raw_fields, applicant_name, applicant_email, status, local_status
+      FROM goodgrants_applications
+      WHERE slug = ${slug} AND applicant_email = ${TARGET_APPLICANT_EMAIL} AND applicant_name = ${TARGET_APPLICANT_NAME}
+      LIMIT 1;
+    `;
+    return rows.length > 0 ? rows[0] : null;
+  } catch (error) {
+    console.error(`Failed to get application details for slug ${slug} from DB:`, error);
+    return null;
   }
 }

@@ -7,7 +7,7 @@ import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, Responsive
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Loader2 } from 'lucide-react'; // NEW IMPORT
 // UPDATED IMPORT: Use AnalyticsLeaderboardEntry instead of LeaderboardEntry for analytics
-import { AnalyticsLeaderboardEntry } from '@/actions/leaderboard'; 
+import { AnalyticsLeaderboardEntry } from '@/actions/leaderboard';
 import { Badge } from '@/components/ui/badge';
 import { cn } from '@/lib/utils';
 
@@ -109,7 +109,7 @@ const processAnalyticsData = (leaderboard: AnalyticsLeaderboardEntry[]) => { // 
 const MunicipalTooltip = ({ active, payload, label }: any) => {
     if (active && payload && payload.length) {
         // The payload now contains a 'total' property we added
-        const total = payload[0].payload.total; 
+        const total = payload[0].payload.total;
 
         return (
             <div className="p-3 bg-background border rounded-md shadow-lg text-sm">
@@ -119,7 +119,7 @@ const MunicipalTooltip = ({ active, payload, label }: any) => {
                         {`${entry.name}: ${entry.value}%`}
                     </p>
                 ))}
-                <p className="text-muted-foreground mt-1 text-xs">Total Apps: {total}</p>
+                <p className="text-muted-foreground mt-1 text-xs">Total Applications: {total}</p>
             </div>
         );
     }

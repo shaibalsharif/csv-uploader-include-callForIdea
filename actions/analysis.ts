@@ -395,8 +395,7 @@ export async function triggerLiveSync() {
 export async function getRawApplicationsForScan(): Promise<AppRawData[]> {
   try {
     // Filter applications by the required applicant account AND local_status = 'active'
-    const { rows: apps } =
-      await sql<AppRawData>`
+    const { rows: apps } = await sql<AppRawData>`
         SELECT slug, title, raw_fields, applicant_name, applicant_email, status, local_status
         FROM goodgrants_applications
         WHERE applicant_email = ${TARGET_APPLICANT_EMAIL} 
@@ -410,19 +409,23 @@ export async function getRawApplicationsForScan(): Promise<AppRawData[]> {
   }
 }
 
-
 // NEW ACTION: Fetch single application details from local DB
-export async function getApplicationDetailsFromDB(slug: string): Promise<AppRawData | null> {
+export async function getApplicationDetailsFromDB(
+  slug: string
+): Promise<AppRawData | null> {
   try {
     const { rows } = await sql<AppRawData>`
-      SELECT slug, title, raw_fields, applicant_name, applicant_email, status, local_status
-      FROM goodgrants_applications
-      WHERE slug = ${slug} AND applicant_email = ${TARGET_APPLICANT_EMAIL} AND applicant_name = ${TARGET_APPLICANT_NAME}
-      LIMIT 1;
-    `;
+SELECT slug, title, raw_fields, applicant_name, applicant_email, status, local_status
+FROM goodgrants_applications
+WHERE slug = ${slug} 
+LIMIT 1;
+`;
     return rows.length > 0 ? rows[0] : null;
   } catch (error) {
-    console.error(`Failed to get application details for slug ${slug} from DB:`, error);
+    console.error(
+      `Failed to get application details for slug ${slug} from DB:`,
+      error
+    );
     return null;
   }
 }

@@ -42,14 +42,16 @@ export function ApplicationDetailsInquiryModal({ isOpen, onClose, applicationSlu
     const [application, setApplication] = useState<ApplicationData | null>(null)
     const [isLoading, setIsLoading] = useState(false)
     const { toast } = useToast()
-    console.log(applicationSlug);
-    
+
+
 
     const fetchDetails = useCallback(async (slug: string) => {
         setIsLoading(true)
         setApplication(null)
         try {
             const appDetails = await getApplicationDetailsLocal(slug) as ApplicationData | null;
+           
+
             setApplication(appDetails)
         } catch (err) {
             toast({ title: "Error", description: "Failed to fetch application details from local DB.", variant: "destructive" })
@@ -84,7 +86,7 @@ export function ApplicationDetailsInquiryModal({ isOpen, onClose, applicationSlu
                         Reviewing local data for: <strong>{isLoading ? "..." : application?.title}</strong>
                     </DialogDescription>
                 </DialogHeader>
-                
+
                 {isLoading ? (
                     <div className="flex items-center justify-center py-12">
                         <Loader2 className="h-8 w-8 animate-spin mr-2" /> Loading Details...
@@ -96,7 +98,7 @@ export function ApplicationDetailsInquiryModal({ isOpen, onClose, applicationSlu
                     </div>
                 ) : (
                     <>
-                        <ScrollArea className="flex-1 pr-6">
+                        <ScrollArea className="flex-1 pr-6 overflow-auto">
                             <CardContent className="px-0 space-y-4">
                                 <div>
                                     <h4 className="font-semibold text-base">Metadata</h4>

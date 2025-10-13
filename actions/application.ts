@@ -100,21 +100,7 @@ export async function addTags(config: any, appSlug: string, tags: string[]) {
   }
   return { success: true, message: `Successfully added all ${tags.length} tags.` };
 }
-// NEW FUNCTION: Local Archive implementation
-export async function archiveApplication(config: { apiKey: string }, slug: string) {
-  try {
-    // This now only updates the local_status to 'archived' in the DB
-    await sql`
-      UPDATE goodgrants_applications
-      SET local_status = 'archived'
-      WHERE slug = ${slug};
-    `;
-    return { success: true, message: `Application ${slug} locally archived.` };
-  } catch (error) {
-    console.error("Local Archive Error:", error);
-    throw new Error("Failed to update application status to 'archived' in local database.");
-  }
-}
+
 export async function addEligibleTagToApplications(config: { apiKey: string }, slugs: string[]) {
     const { apiKey } = config;
     const tagToAdd = "Eligible-1";
@@ -141,3 +127,18 @@ export async function addEligibleTagToApplications(config: { apiKey: string }, s
     return { success: true, message: `Successfully tagged ${results.success.length} applications as ${tagToAdd}.` };
 }
 
+// NEW FUNCTION: Local Archive implementation
+export async function archiveApplication(config: { apiKey: string }, slug: string) {
+  try {
+    // This now only updates the local_status to 'archived' in the DB
+    await sql`
+      UPDATE goodgrants_applications
+      SET local_status = 'archived'
+      WHERE slug = ${slug};
+    `;
+    return { success: true, message: `Application ${slug} locally archived.` };
+  } catch (error) {
+    console.error("Local Archive Error:", error);
+    throw new Error("Failed to update application status to 'archived' in local database.");
+  }
+}

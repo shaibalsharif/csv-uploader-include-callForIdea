@@ -1,6 +1,9 @@
 // csv-uploader-include-callForIdea/components/ApplicationDetailsInquiryModal.tsx
 
 "use client"
+import ReactMarkdown from "react-markdown"
+import rehypeRaw from "rehype-raw"
+
 
 import { useState, useEffect, useCallback } from "react"
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from "@/components/ui/dialog"
@@ -50,7 +53,7 @@ export function ApplicationDetailsInquiryModal({ isOpen, onClose, applicationSlu
         setApplication(null)
         try {
             const appDetails = await getApplicationDetailsLocal(slug) as ApplicationData | null;
-           
+
 
             setApplication(appDetails)
         } catch (err) {
@@ -118,8 +121,12 @@ export function ApplicationDetailsInquiryModal({ isOpen, onClose, applicationSlu
                                             if (label) {
                                                 return (
                                                     <div key={field.slug || index} className="grid grid-cols-1 md:grid-cols-3 gap-4 py-3 border-b">
-                                                        <dt className="text-sm font-medium text-muted-foreground md:col-span-1">{label.replace("*", "")}</dt>
-                                                        <dd className="text-sm text-foreground md:col-span-2 break-words">{formatRawFieldValue(field)}</dd>
+                                                        <dt className="text-sm font-medium text-muted-foreground md:col-span-1">
+                                                            {label.replace("*", "")}
+                                                        </dt>
+                                                        <dd className="text-sm text-foreground md:col-span-2 break-words prose prose-sm max-w-none">
+                                                            <RenderFieldValue value={formatRawFieldValue(field)} />
+                                                        </dd>
                                                     </div>
                                                 )
                                             }
@@ -137,4 +144,20 @@ export function ApplicationDetailsInquiryModal({ isOpen, onClose, applicationSlu
             </DialogContent>
         </Dialog>
     )
+}
+
+
+
+function RenderFieldValue({ value }: { value: string }) {
+  if (!value) return <span>N/A</span>
+
+  const hasHTML = /<\/?[a-z][\s\S]*>/i.test(value)
+
+  return (
+    <div className="prose prose-sm max-w-none">
+      <ReactMarkdown rehypePlugins={[rehypeRaw]}>
+        {value}
+      </ReactMarkdown>
+    </div>
+  )
 }

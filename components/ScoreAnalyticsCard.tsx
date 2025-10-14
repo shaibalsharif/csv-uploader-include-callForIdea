@@ -5,8 +5,7 @@
 import { useMemo } from 'react';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from 'recharts';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
-import { Loader2 } from 'lucide-react'; // NEW IMPORT
-// UPDATED IMPORT: Use AnalyticsLeaderboardEntry instead of LeaderboardEntry for analytics
+import { Loader2 } from 'lucide-react'; 
 import { AnalyticsLeaderboardEntry } from '@/actions/leaderboard';
 import { Badge } from '@/components/ui/badge';
 import { cn } from '@/lib/utils';
@@ -36,20 +35,19 @@ const COLORS = {
 };
 
 interface ScoreAnalyticsCardProps {
-    leaderboard: AnalyticsLeaderboardEntry[]; // CHANGED TYPE
+    leaderboard: AnalyticsLeaderboardEntry[]; 
     municipalityFilter: string;
-    isLoading: boolean; // NEW PROP
+    isLoading: boolean; 
 }
 
-// Function to process data for both overall and municipal breakdown
-const processAnalyticsData = (leaderboard: AnalyticsLeaderboardEntry[]) => { // CHANGED TYPE
+// Function to process data for all score analytics charts
+const processAnalyticsData = (leaderboard: AnalyticsLeaderboardEntry[]) => { 
     // 1. Overall Metrics
     const total = leaderboard.length;
     let overallData: OverallScoreData[] = [];
 
 
     if (total > 0) {
-        // NOTE: The totalScore property is what matters here, and it exists on AnalyticsLeaderboardEntry
         const counts = {
             SCORE_6: leaderboard.filter(e => SCORE_THRESHOLDS.SCORE_6(e.totalScore)).length,
             GTE_5: leaderboard.filter(e => SCORE_THRESHOLDS.GTE_5(e.totalScore)).length,
@@ -68,7 +66,20 @@ const processAnalyticsData = (leaderboard: AnalyticsLeaderboardEntry[]) => { // 
         })) as OverallScoreData[];
     }
 
-    // 2. Municipal Breakdown
+    // 2. Municipal Breakdown (Count for simple bar chart)
+    const municipalCountMap = leaderboard.reduce((acc, entry) => {
+        const muni = entry.municipality || 'N/A';
+        acc[muni] = (acc[muni] || 0) + 1;
+        return acc;
+    }, {} as Record<string, number>);
+
+    const municipalCountData = Object.entries(municipalCountMap).map(([municipality, count]) => ({
+        municipality,
+        count
+    })).sort((a, b) => b.count - a.count);
+
+
+    // 3. Municipal Breakdown (Percentage for stacked bar chart)
     const municipalMap = leaderboard.reduce((acc, entry) => {
         const muni = entry.municipality || 'N/A';
         if (!acc[muni]) {
@@ -94,21 +105,19 @@ const processAnalyticsData = (leaderboard: AnalyticsLeaderboardEntry[]) => { // 
             'Score ≥ 5': calculatePercentage(counts.GTE_5),
             'Score ≥ 4': calculatePercentage(counts.GTE_4),
             'Score < 4': calculatePercentage(counts.LT_4),
-            total: counts.total, // Keep total for the custom tooltip
+            total: counts.total, 
         };
     }).sort((a, b) => {
-        // Sort by total applications descending
         return b.total - a.total;
     });
 
-    return { overallData, municipalData };
+    return { overallData, municipalData, municipalCountData };
 };
 
 
-// Custom tooltip for municipal chart
+// Custom tooltip for municipal score percentage chart
 const MunicipalTooltip = ({ active, payload, label }: any) => {
     if (active && payload && payload.length) {
-        // The payload now contains a 'total' property we added
         const total = payload[0].payload.total;
 
         return (
@@ -127,14 +136,14 @@ const MunicipalTooltip = ({ active, payload, label }: any) => {
 };
 
 export function ScoreAnalyticsCard({ leaderboard, municipalityFilter, isLoading }: ScoreAnalyticsCardProps) {
-    const { overallData, municipalData } = useMemo(() => processAnalyticsData(leaderboard), [leaderboard]);
+    const { overallData, municipalData, municipalCountData } = useMemo(() => processAnalyticsData(leaderboard), [leaderboard]); 
     const overallTotal = leaderboard.length;
     const isFiltered = municipalityFilter !== 'all';
 
     // Keys for the municipal stacked bar chart
     const municipalKeys = ['Score = 6', 'Score ≥ 5', 'Score ≥ 4', 'Score < 4'];
 
-    if (isLoading) { // NEW: Handle loading state
+    if (isLoading) { 
         return (
             <Card className="shadow-lg mt-6">
                 <CardHeader>
@@ -158,9 +167,9 @@ export function ScoreAnalyticsCard({ leaderboard, municipalityFilter, isLoading 
                 <CardTitle>Scoring Performance Analytics</CardTitle>
                 <CardDescription>Breakdown of application scores across predefined thresholds.</CardDescription>
             </CardHeader>
-            <CardContent className="grid gap-6 md:grid-cols-2">
+            <CardContent className="grid gap-6 md:grid-cols-2 lg:grid-cols-3"> {/* Use a 3-column grid */}
 
-                {/* 1. Overall Score Distribution (Pie/Summary) */}
+                {/* 1. Overall Score Distribution (Existing) */}
                 <Card>
                     <CardHeader className={cn("pb-2", isFiltered && "bg-accent/30 rounded-t-xl")}>
                         <CardTitle className="text-base">
@@ -185,7 +194,26 @@ export function ScoreAnalyticsCard({ leaderboard, municipalityFilter, isLoading 
                     </CardContent>
                 </Card>
 
-                {/* 2. Municipal Breakdown (Stacked Bar) */}
+                {/* 2. Municipal Count Bar Chart (NEW CHART) */}
+                <Card>
+                    <CardHeader className="pb-2">
+                        <CardTitle className="text-base">Applications per Municipality</CardTitle>
+                        <CardDescription className="text-xs">{`Total: ${overallTotal} (Filtered by Score)`}</CardDescription>
+                    </CardHeader>
+                    <CardContent className="h-[300px] pt-4">
+                        <ResponsiveContainer width="100%" height="100%">
+                            <BarChart data={municipalCountData} layout="vertical" margin={{ top: 0, right: 30, left: 10, bottom: 0 }}>
+                                <CartesianGrid strokeDasharray="3 3" />
+                                <XAxis type="number" allowDecimals={false} />
+                                <YAxis type="category" dataKey="municipality" width={100} />
+                                <Tooltip contentStyle={{ fontSize: '12px' }} />
+                                <Bar dataKey="count" fill="#8884d8" name="Applications" />
+                            </BarChart>
+                        </ResponsiveContainer>
+                    </CardContent>
+                </Card>
+
+                {/* 3. Municipal Breakdown (Existing Stacked Percentage Bar Chart) */}
                 <Card>
                     <CardHeader className="pb-2">
                         <CardTitle className="text-base">Scoring Breakdown by Municipality (%)</CardTitle>

@@ -16,6 +16,7 @@ export interface AppRawData {
   applicant_email: string;
   status: string;
   local_status: string; // ADDED
+  category?: any; // Added for convenience in new functions
 }
 
 // --- Constants for Filtering ---
@@ -392,9 +393,9 @@ export async function triggerLiveSync() {
   }
 }
 // --- ACTION 3: For Duplicate Finder (Reads all eligible raw data from DB) ---
+// This function RETAINS the target applicant constraints, as it is used for Duplicate Finder.
 export async function getRawApplicationsForScan(): Promise<AppRawData[]> {
   try {
-    // Filter applications by the required applicant account AND local_status = 'active'
     const { rows: apps } = await sql<AppRawData>`
         SELECT slug, title, raw_fields, applicant_name, applicant_email, status, local_status
         FROM goodgrants_applications
@@ -427,5 +428,28 @@ LIMIT 1;
       error
     );
     return null;
+  }
+}
+
+/**
+ * NEW ACTION: Fetch multiple application details from local DB based on slugs.
+ * @param slugs - An array of application slugs.
+ * @returns An array of application raw data objects.
+ */
+export async function getRawApplicationsBySlugs(
+  slugs: string[]
+): Promise<AppRawData[]> {
+  if (!slugs || slugs.length === 0) return [];
+  try {
+    const pgArray = `{${slugs.join(',')}}`;
+    const { rows: apps } = await sql<AppRawData & { category: any }>` 
+        SELECT slug, title, raw_fields, applicant_name, applicant_email, status, local_status, category
+        FROM goodgrants_applications
+        WHERE slug = ANY(${pgArray}::text[]);
+      `;
+    return apps.map(row => ({ ...row, category: row.category }));
+  } catch (error) {
+    console.error("Failed to get raw applications by slugs:", error);
+    return [];
   }
 }

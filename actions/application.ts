@@ -1,7 +1,6 @@
 "use server";
 import { sql } from "@vercel/postgres"; // NEW IMPORT
 
-
 const API_BASE_URL = "https://api.cr4ce.com";
 const API_VERSION_HEADER = "application/vnd.Creative Force.v2.3+json";
 const SEASON_SLUG = "VgbzlaOa";
@@ -12,7 +11,12 @@ function sleep(ms: number) {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
-async function safeFetch(url: string, options: RequestInit, retries = 3, delay = 1000): Promise<Response> {
+async function safeFetch(
+  url: string,
+  options: RequestInit,
+  retries = 3,
+  delay = 1000
+): Promise<Response> {
   try {
     const res = await fetch(url, options);
     if (res.status === 429 && retries > 0) {
@@ -31,104 +35,186 @@ async function safeFetch(url: string, options: RequestInit, retries = 3, delay =
   }
 }
 
-async function apiRequest(endpoint: string, method: 'GET' | 'POST' | 'PUT' | 'DELETE', apiKey: string, body?: any) {
-    const options: RequestInit = {
-        method,
-        headers: { 'x-api-key': apiKey, 'Accept': API_VERSION_HEADER, 'x-api-language': 'en_GB', 'Content-Type': 'application/json' },
-    };
-    if (body) { options.body = JSON.stringify(body); }
-    const response = await safeFetch(`${API_BASE_URL}${endpoint}`, options);
-    if (!response.ok) {
-        const errorData = await response.text();
-        console.error(`API Error: ${response.status} - ${errorData}`);
-        throw new Error(`API request failed: ${response.status}`);
-    }
-    if (response.status === 204) { return { success: true }; }
-    return response.json();
+async function apiRequest(
+  endpoint: string,
+  method: "GET" | "POST" | "PUT" | "DELETE",
+  apiKey: string,
+  body?: any
+) {
+  const options: RequestInit = {
+    method,
+    headers: {
+      "x-api-key": apiKey,
+      Accept: API_VERSION_HEADER,
+      "x-api-language": "en_GB",
+      "Content-Type": "application/json",
+    },
+  };
+  if (body) {
+    options.body = JSON.stringify(body);
+  }
+  const response = await safeFetch(`${API_BASE_URL}${endpoint}`, options);
+  if (!response.ok) {
+    const errorData = await response.text();
+    console.error(`API Error: ${response.status} - ${errorData}`);
+    throw new Error(`API request failed: ${response.status}`);
+  }
+  if (response.status === 204) {
+    return { success: true };
+  }
+  return response.json();
 }
 
 // --- Type Definitions ---
-export interface FetchParams { page: number; per_page: number; order: string; dir: 'asc' | 'desc'; archived: 'only' | 'none'; deleted: 'only' | 'none'; }
-interface Filters { 
-    title?: string; 
-    tags?: string[]; 
-    status?: string; 
-    date_after?: string | null; 
-    date_before?: string; 
+export interface FetchParams {
+  page: number;
+  per_page: number;
+  order: string;
+  dir: "asc" | "desc";
+  archived: "only" | "none";
+  deleted: "only" | "none";
+}
+interface Filters {
+  title?: string;
+  tags?: string[];
+  status?: string;
+  date_after?: string | null;
+  date_before?: string;
 }
 
 // --- API Actions ---
-export async function getApplications(config: { apiKey: string }, params: FetchParams, filters: Filters) {
-    const query = new URLSearchParams({ page: params.page.toString(), per_page: params.per_page.toString(), order: params.order, dir: params.dir, archived: params.archived, deleted: params.deleted });
-    
-    if (filters.title) query.append('title', filters.title);
-    if (filters.status) query.append('status', filters.status);
-    
-    if (filters.date_after) {
-        const formattedDate = new Date(filters.date_after).toISOString().split(".")[0] + "Z";
-        query.append("updated_at[after]", formattedDate);
-    }
-    if (filters.date_before) {
-        const formattedDate = new Date(filters.date_before).toISOString().split(".")[0] + "Z";
-        query.append("updated_at[before]", formattedDate);
-    }
-    
-    if (Array.isArray(filters.tags)) {
-        filters.tags.forEach((tag) => query.append("tag", tag));
-    }
+export async function getApplications(
+  config: { apiKey: string },
+  params: FetchParams,
+  filters: Filters
+) {
+  const query = new URLSearchParams({
+    page: params.page.toString(),
+    per_page: params.per_page.toString(),
+    order: params.order,
+    dir: params.dir,
+    archived: params.archived,
+    deleted: params.deleted,
+  });
 
-    return apiRequest(`/application?${query.toString()}`, 'GET', config.apiKey);
+  if (filters.title) query.append("title", filters.title);
+  if (filters.status) query.append("status", filters.status);
+
+  if (filters.date_after) {
+    const formattedDate =
+      new Date(filters.date_after).toISOString().split(".")[0] + "Z";
+    query.append("updated_at[after]", formattedDate);
+  }
+  if (filters.date_before) {
+    const formattedDate =
+      new Date(filters.date_before).toISOString().split(".")[0] + "Z";
+    query.append("updated_at[before]", formattedDate);
+  }
+
+  if (Array.isArray(filters.tags)) {
+    filters.tags.forEach((tag) => query.append("tag", tag));
+  }
+
+  return apiRequest(`/application?${query.toString()}`, "GET", config.apiKey);
 }
 
-export async function getApplicationDetails(config: { apiKey: string }, slug: string) { return apiRequest(`/application/${slug}`, 'GET', config.apiKey); }
+export async function getApplicationDetails(
+  config: { apiKey: string },
+  slug: string
+) {
+  return apiRequest(`/application/${slug}`, "GET", config.apiKey);
+}
 // export async function archiveApplication(config: { apiKey: string }, slug: string) { return apiRequest(`/application/${slug}/archive`, 'PUT', config.apiKey); }
-export async function unarchiveApplication(config: { apiKey: string }, slug: string) { return apiRequest(`/application/${slug}/archive`, 'DELETE', config.apiKey); }
-export async function deleteApplication(config: { apiKey: string }, slug: string) { return apiRequest(`/application/${slug}`, 'DELETE', config.apiKey); }
-export async function restoreApplication(config: { apiKey: string }, slug: string) { return apiRequest(`/application/${slug}/restore`, 'PUT', config.apiKey); }
+export async function unarchiveApplication(
+  config: { apiKey: string },
+  slug: string
+) {
+  return apiRequest(`/application/${slug}/archive`, "DELETE", config.apiKey);
+}
+export async function deleteApplication(
+  config: { apiKey: string },
+  slug: string
+) {
+  return apiRequest(`/application/${slug}`, "DELETE", config.apiKey);
+}
+export async function restoreApplication(
+  config: { apiKey: string },
+  slug: string
+) {
+  return apiRequest(`/application/${slug}/restore`, "PUT", config.apiKey);
+}
 
-export async function submitApplication(config: any, title: string, categorySlug: string, applicationData: any) {
-  const payload = { applicant: config.applicantSlug, season: SEASON_SLUG, form: config.formSlug, status: "submitted", title: title, category: categorySlug, application_fields: applicationData };
-  return apiRequest('/application', 'POST', config.apiKey, payload);
+export async function submitApplication(
+  config: any,
+  title: string,
+  categorySlug: string,
+  applicationData: any
+) {
+  const payload = {
+    applicant: config.applicantSlug,
+    season: SEASON_SLUG,
+    form: config.formSlug,
+    status: "submitted",
+    title: title,
+    category: categorySlug,
+    application_fields: applicationData,
+  };
+  return apiRequest("/application", "POST", config.apiKey, payload);
 }
 
 export async function addTags(config: any, appSlug: string, tags: string[]) {
-  if (!appSlug || !tags || tags.length === 0) throw new Error("Missing application slug or tags.");
+  if (!appSlug || !tags || tags.length === 0)
+    throw new Error("Missing application slug or tags.");
   for (const tag of tags) {
     const encodedTag = encodeURIComponent(tag);
-    await apiRequest(`/application/${appSlug}/tag/${encodedTag}`, 'PUT', config.apiKey);
+    await apiRequest(
+      `/application/${appSlug}/tag/${encodedTag}`,
+      "PUT",
+      config.apiKey
+    );
     await sleep(200);
   }
-  return { success: true, message: `Successfully added all ${tags.length} tags.` };
+  return {
+    success: true,
+    message: `Successfully added all ${tags.length} tags.`,
+  };
 }
 
-export async function addEligibleTagToApplications(config: { apiKey: string }, slugs: string[]) {
-    const { apiKey } = config;
-    const tagToAdd = "Eligible-1";
-    if (!slugs || slugs.length === 0) throw new Error("No application slugs provided.");
-    
-    const encodedTag = encodeURIComponent(tagToAdd);
-    
-    const results = { success: [] as string[], failed: [] as string[] };
+export async function addEligibleTagToApplications(
+  config: { apiKey: string },
+  applicationIds: string[],
+  tags: string[]
+) {
+  for (const id of applicationIds) {
+    const url = `https://api.cr4ce.com/application/${id}/tag/${tags.join(",")}`;
 
-    for (const appSlug of slugs) {
-        try {
-            await apiRequest(`/application/${appSlug}/tag/${encodedTag}`, 'PUT', apiKey);
-            results.success.push(appSlug);
-        } catch (error) {
-            results.failed.push(appSlug);
-        }
-        await sleep(200);
+    const response = await fetch(url, {
+      method: "PUT",
+      headers: {
+        Accept: "application/vnd.Creative Force.v2.3+json",
+        "x-api-key": config.apiKey,
+        "Content-Type": "application/json",
+      },
+    });
+
+    if (!response.ok) {
+      const errText = await response.text();
+      console.error(`❌ Failed to tag application ${id}: ${errText}`);
+      throw new Error(`Failed to tag ${id}`);
+    } else {
+      console.log(`✅ Tagged ${id} with ${tags.join(",")}`);
     }
+  }
 
-    if (results.failed.length > 0) {
-        throw new Error(`Failed to tag ${results.failed.length} applications.`);
-    }
-
-    return { success: true, message: `Successfully tagged ${results.success.length} applications as ${tagToAdd}.` };
+  return { success: true, taggedCount: applicationIds.length };
 }
+
 
 // NEW FUNCTION: Local Archive implementation
-export async function archiveApplication(config: { apiKey: string }, slug: string) {
+export async function archiveApplication(
+  config: { apiKey: string },
+  slug: string
+) {
   try {
     // This now only updates the local_status to 'archived' in the DB
     await sql`
@@ -139,6 +225,8 @@ export async function archiveApplication(config: { apiKey: string }, slug: strin
     return { success: true, message: `Application ${slug} locally archived.` };
   } catch (error) {
     console.error("Local Archive Error:", error);
-    throw new Error("Failed to update application status to 'archived' in local database.");
+    throw new Error(
+      "Failed to update application status to 'archived' in local database."
+    );
   }
 }

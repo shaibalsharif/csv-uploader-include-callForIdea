@@ -1,3 +1,5 @@
+// csv-uploader-include-callForIdea/components/Leaderboard.tsx
+
 "use client";
 
 import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
@@ -10,14 +12,16 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { Input } from "@/components/ui/input";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { Progress } from "@/components/ui/progress";
-import { RefreshCw, Trophy, AlertCircle, ChevronLeft, ChevronRight, ArrowUpDown, Tag, Search, Eye, MapPin, Loader2, XCircle } from 'lucide-react';
-// UPDATED IMPORT: Added AnalyticsLeaderboardEntry and getAllLeaderboardDataForAnalytics
+import { RefreshCw, Trophy, AlertCircle, ChevronLeft, ChevronRight, ArrowUpDown, Tag, Search, Eye, MapPin, Loader2 } from 'lucide-react';
 import { getLeaderboardPage, getScoreSets, syncLeaderboard, getMunicipalities, LeaderboardEntry, ScoreBreakdown, AnalyticsLeaderboardEntry, getAllLeaderboardDataForAnalytics } from '@/actions/leaderboard';
+import type { AppRawData } from '@/actions/analysis'; 
+import { getRawApplicationsBySlugs } from '@/actions/analysis'; 
 import { addEligibleTagToApplications } from '@/actions/application';
 import { useToast } from "@/components/ui/use-toast";
 import { Badge } from './ui/badge';
 import { ApplicationDetailsInquiryModal } from './ApplicationDetailsInquiryModal';
 import { ScoreAnalyticsCard } from './ScoreAnalyticsCard'; 
+import { LeaderboardBreakdowns, FilteredAppRawData } from './LeaderboardBreakdowns'; // NEW IMPORT
 
 type SortableKeys = 'title' | 'total_score';
 
@@ -65,8 +69,8 @@ const getScoreColorClass = (rawValue: number, maxScore: number): string => {
 
 export function Leaderboard({ config }: LeaderboardProps) {
     const [leaderboard, setLeaderboard] = useState<LeaderboardEntry[]>([]);
-    const [analyticsData, setAnalyticsData] = useState<AnalyticsLeaderboardEntry[]>([]); // NEW STATE
-    const [isAnalyticsLoading, setIsAnalyticsLoading] = useState(false); // NEW STATE
+    const [filteredApps, setFilteredApps] = useState<FilteredAppRawData[]>([]); // NEW STATE for analytics
+    const [isAnalyticsLoading, setIsAnalyticsLoading] = useState(false); 
     
     const [scoreSets, setScoreSets] = useState<ScoreSet[]>([]);
     const [municipalities, setMunicipalities] = useState<string[]>([]);
@@ -86,7 +90,6 @@ export function Leaderboard({ config }: LeaderboardProps) {
     const [pagination, setPagination] = useState({ currentPage: 1, lastPage: 1, total: 0, perPage: 20 });
     const [sortConfig, setSortConfig] = useState<{ key: SortableKeys; direction: 'asc' | 'desc' }>({ key: 'total_score', direction: 'desc' });
     
-    // --- Filter States ---
     const [titleSearch, setTitleSearch] = useState("");
     const debouncedTitleSearch = useDebounce(titleSearch, 500);
     
@@ -99,12 +102,7 @@ export function Leaderboard({ config }: LeaderboardProps) {
     const debouncedMaxScore = useDebounce(maxScore, 500);
 
     const [municipalityFilter, setMunicipalityFilter] = useState("all");
-    const debouncedMunicipalityFilter = useDebounce(municipalityFilter, 500); 
-
-    // Check if any filter is active (used for the Clear Filters button)
-    const isFilterActive = useMemo(() => {
-        return titleSearch !== "" || tagFilter !== "" || minScore !== "" || maxScore !== "" || municipalityFilter !== "all";
-    }, [titleSearch, tagFilter, minScore, maxScore, municipalityFilter]);
+    const debouncedMunicipalityFilter = useDebounce(municipalityFilter, 500);
 
     // Extract unique criteria names for dynamic columns
     const uniqueCriteria = useMemo(() => {
@@ -125,7 +123,6 @@ export function Leaderboard({ config }: LeaderboardProps) {
             return scoreEntry.score;
         }
         // Otherwise, use the rawValue (already rounded server-side) and format explicitly.
-        // FIX: Ensure output is exactly two decimal places for UI consistency
         return scoreEntry.rawValue.toFixed(2);
     };
     
@@ -195,7 +192,7 @@ export function Leaderboard({ config }: LeaderboardProps) {
         }
     }, [selectedScoreSet, pagination.currentPage, pagination.perPage, sortConfig, debouncedTitleSearch, debouncedTagFilter, debouncedMinScore, debouncedMaxScore, debouncedMunicipalityFilter]);
     
-    // NEW: Function to fetch all data for the analytics card
+    // NEW: Function to fetch all data for the analytics card and breakdowns
     const fetchAnalyticsData = useCallback(async () => {
         if (!selectedScoreSet) return;
         
@@ -204,15 +201,16 @@ export function Leaderboard({ config }: LeaderboardProps) {
         const parsedMinScore = debouncedMinScore ? parseFloat(debouncedMinScore) : undefined;
         const parsedMaxScore = debouncedMaxScore ? parseFloat(debouncedMaxScore) : undefined;
         
-        // Skip fetch if parsing results in NaN (error will be shown by fetchLeaderboard)
+        // Skip fetch if parsing results in NaN
         if ((parsedMinScore !== undefined && isNaN(parsedMinScore)) || (parsedMaxScore !== undefined && isNaN(parsedMaxScore))) {
             setIsAnalyticsLoading(false);
-            setAnalyticsData([]);
+            setFilteredApps([]);
             return;
         }
         
         try {
-            const data = await getAllLeaderboardDataForAnalytics(
+            // Step 1: Get filtered slugs, scores, and municipalities (minimal data)
+            const minimalData = await getAllLeaderboardDataForAnalytics(
                 selectedScoreSet,
                 debouncedTitleSearch, 
                 debouncedTagFilter,
@@ -220,10 +218,39 @@ export function Leaderboard({ config }: LeaderboardProps) {
                 parsedMaxScore,
                 debouncedMunicipalityFilter
             );
-            setAnalyticsData(data);
+            
+            if (minimalData.length === 0) {
+                setFilteredApps([]);
+                return;
+            }
+
+            // Step 2: Get full raw data for those slugs
+            const slugs = minimalData.map(d => d.slug);
+            const rawDataList = await getRawApplicationsBySlugs(slugs);
+
+            // Create a Map for quick lookup
+            const rawDataMap = rawDataList.reduce((acc, app) => {
+                acc[app.slug] = app;
+                return acc;
+            }, {} as Record<string, AppRawData>);
+
+            // Step 3: Combine and enrich minimal data with raw data
+            const combinedData: FilteredAppRawData[] = minimalData.map(min => {
+                const rawApp = rawDataMap[min.slug];
+                if (!rawApp) return null; // Skip if raw data is missing
+
+                // Merge minimal data (score, muni) with raw data (fields, category)
+                return {
+                    ...rawApp,
+                    totalScore: min.totalScore,
+                    municipality: min.municipality,
+                } as FilteredAppRawData;
+            }).filter((d): d is FilteredAppRawData => d !== null);
+
+            setFilteredApps(combinedData);
         } catch (err) {
             console.error("Failed to load analytics data:", err);
-            setAnalyticsData([]); // Clear data on error
+            setFilteredApps([]); // Clear data on error
         } finally {
             setIsAnalyticsLoading(false);
         }
@@ -239,7 +266,7 @@ export function Leaderboard({ config }: LeaderboardProps) {
         }
         
         // Always fetch analytics data when filters change
-        fetchAnalyticsData(); // NEW CALL
+        fetchAnalyticsData(); 
         
     }, [selectedScoreSet, pagination.perPage, sortConfig, debouncedTitleSearch, debouncedTagFilter, debouncedMinScore, debouncedMaxScore, debouncedMunicipalityFilter]); 
 
@@ -249,18 +276,6 @@ export function Leaderboard({ config }: LeaderboardProps) {
     }, [pagination.currentPage]); 
     
     // --- Action Handlers ---
-
-    const handleClearFilters = () => {
-        setTitleSearch("");
-        setTagFilter("");
-        setMinScore("");
-        setMaxScore("");
-        setMunicipalityFilter("all");
-        setSelectedSlugs([]);
-        // The useEffect above handles the reset of currentPage and subsequent data fetch
-        // as soon as the debounced states update to their empty/default values.
-        toast({ title: "Filters Cleared", description: "All filters have been reset.", duration: 1500 });
-    };
 
     const handleSync = async () => {
         if (!config.apiKey || !selectedScoreSet) return;
@@ -323,7 +338,7 @@ export function Leaderboard({ config }: LeaderboardProps) {
         if (selectedSlugs.length === 0) return;
         setIsTagging(true);
         try {
-            await addEligibleTagToApplications(config, selectedSlugs);
+            await addEligibleTagToApplications(config, selectedSlugs,["Eligible-1"]);
             toast({ title: "Success", description: `${selectedSlugs.length} applications tagged successfully.` });
             setSelectedSlugs([]);
             fetchLeaderboard();
@@ -343,10 +358,16 @@ export function Leaderboard({ config }: LeaderboardProps) {
 
     return (
         <>
-            {/* UPDATED: Pass analyticsData and isAnalyticsLoading */}
+            {/* UPDATED: Pass filteredApps for score analytics */}
             <ScoreAnalyticsCard 
-                leaderboard={analyticsData} 
+                leaderboard={filteredApps as unknown as AnalyticsLeaderboardEntry[]} 
                 municipalityFilter={debouncedMunicipalityFilter} 
+                isLoading={isAnalyticsLoading}
+            />
+
+            {/* NEW COMPONENT for other breakdowns */}
+            <LeaderboardBreakdowns
+                filteredApps={filteredApps}
                 isLoading={isAnalyticsLoading}
             />
 
@@ -372,10 +393,7 @@ export function Leaderboard({ config }: LeaderboardProps) {
                                 </SelectContent>
                             </Select>
                             {isLoadingSets ? (<Skeleton className="h-10 w-[220px]" />) : (
-                                <Select value={selectedScoreSet} onValueChange={(slug) => {
-                                    handleClearFilters(); // Clear all filters when changing the score set
-                                    setSelectedScoreSet(slug);
-                                }} disabled={scoreSets.length === 0 || isSyncing}>
+                                <Select value={selectedScoreSet} onValueChange={(slug) => {setPagination(p => ({...p, currentPage: 1})); setTitleSearch(""); setTagFilter(""); setMinScore(""); setMaxScore(""); setMunicipalityFilter("all"); setSelectedScoreSet(slug)}} disabled={scoreSets.length === 0 || isSyncing}>
                                     <SelectTrigger className="w-[220px]"><SelectValue placeholder="Select a score set" /></SelectTrigger>
                                     <SelectContent>
                                         {scoreSets.map(set => <SelectItem key={set.slug} value={set.slug}>{set.name.en_GB}</SelectItem>)}
@@ -386,8 +404,8 @@ export function Leaderboard({ config }: LeaderboardProps) {
                     </div>
                 </CardHeader>
                 <CardContent>
-                    <div className="my-4 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-6 gap-4">
-                        <div className="relative col-span-1 sm:col-span-2 lg:col-span-1">
+                    <div className="my-4 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4">
+                        <div className="relative">
                             <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
                             <Input
                                 placeholder="Search title"
@@ -429,13 +447,7 @@ export function Leaderboard({ config }: LeaderboardProps) {
                             disabled={isSyncing}
                             className="text-center"
                         />
-                        
-                        <div className="flex items-center justify-end gap-2 col-span-1 sm:col-span-2 lg:col-span-2">
-                             {/* Clear Filters Button (conditionally rendered) */}
-                             <Button onClick={handleClearFilters} disabled={isSyncing || !isFilterActive} variant="outline" className="flex-shrink-0">
-                                <XCircle className="mr-2 h-4 w-4"/> Clear Filters
-                             </Button>
-
+                        <div className="flex items-center justify-end">
                             {selectedSlugs.length > 0 && (
                                 <Button onClick={handleTagSelected} disabled={isTagging || isSyncing}>
                                     <Tag className="mr-2 h-4 w-4"/> Tag {selectedSlugs.length} as Eligible-1
@@ -528,7 +540,6 @@ export function Leaderboard({ config }: LeaderboardProps) {
                                                 <TooltipProvider>
                                                     <Tooltip>
                                                         <TooltipTrigger asChild>
-                                                            {/* FIX: Ensure totalScore is shown with 2 decimal points */}
                                                             <span className="cursor-help font-semibold text-green-600">{entry.totalScore.toFixed(2)}</span>
                                                         </TooltipTrigger>
                                                         <TooltipContent>

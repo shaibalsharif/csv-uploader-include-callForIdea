@@ -14,14 +14,17 @@ import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/comp
 import { Progress } from "@/components/ui/progress";
 import { RefreshCw, Trophy, AlertCircle, ChevronLeft, ChevronRight, ArrowUpDown, Tag, Search, Eye, MapPin, Loader2 } from 'lucide-react';
 import { getLeaderboardPage, getScoreSets, syncLeaderboard, getMunicipalities, LeaderboardEntry, ScoreBreakdown, AnalyticsLeaderboardEntry, getAllLeaderboardDataForAnalytics } from '@/actions/leaderboard';
-import type { AppRawData } from '@/actions/analysis'; 
-import { getRawApplicationsBySlugs } from '@/actions/analysis'; 
+import type { AppRawData } from '@/actions/analysis';
+import { getRawApplicationsBySlugs } from '@/actions/analysis';
 import { addEligibleTagToApplications } from '@/actions/application';
 import { useToast } from "@/components/ui/use-toast";
 import { Badge } from './ui/badge';
 import { ApplicationDetailsInquiryModal } from './ApplicationDetailsInquiryModal';
-import { ScoreAnalyticsCard } from './ScoreAnalyticsCard'; 
+import { ScoreAnalyticsCard } from './ScoreAnalyticsCard';
 import { LeaderboardBreakdowns, FilteredAppRawData } from './LeaderboardBreakdowns'; // NEW IMPORT
+import { GenerateReportButton } from './GenerateReportButton';
+
+
 
 type SortableKeys = 'title' | 'total_score';
 
@@ -70,8 +73,8 @@ const getScoreColorClass = (rawValue: number, maxScore: number): string => {
 export function Leaderboard({ config }: LeaderboardProps) {
     const [leaderboard, setLeaderboard] = useState<LeaderboardEntry[]>([]);
     const [filteredApps, setFilteredApps] = useState<FilteredAppRawData[]>([]); // NEW STATE for analytics
-    const [isAnalyticsLoading, setIsAnalyticsLoading] = useState(false); 
-    
+    const [isAnalyticsLoading, setIsAnalyticsLoading] = useState(false);
+
     const [scoreSets, setScoreSets] = useState<ScoreSet[]>([]);
     const [municipalities, setMunicipalities] = useState<string[]>([]);
     const [isLoading, setIsLoading] = useState(true);
@@ -81,20 +84,23 @@ export function Leaderboard({ config }: LeaderboardProps) {
     const [error, setError] = useState<string | null>(null);
     const [selectedScoreSet, setSelectedScoreSet] = useState<string>("");
     const [selectedSlugs, setSelectedSlugs] = useState<string[]>([]);
-    
+
     const [isModalOpen, setIsModalOpen] = useState(false);
     const [selectedAppSlug, setSelectedAppSlug] = useState<string | null>(null);
-    
+    const [lastSyncTime, setLastSyncTime] = useState<string | null>(null);
+    const [currentScoreSetName, setCurrentScoreSetName] = useState<string>("");
+
+
     const { toast } = useToast();
-    
+
     const [pagination, setPagination] = useState({ currentPage: 1, lastPage: 1, total: 0, perPage: 20 });
     const [sortConfig, setSortConfig] = useState<{ key: SortableKeys; direction: 'asc' | 'desc' }>({ key: 'total_score', direction: 'desc' });
-    
+
     const [titleSearch, setTitleSearch] = useState("");
     const debouncedTitleSearch = useDebounce(titleSearch, 500);
-    
-    const [tagFilter, setTagFilter] = useState(""); 
-    const debouncedTagFilter = useDebounce(tagFilter, 500); 
+
+    const [tagFilter, setTagFilter] = useState("");
+    const debouncedTagFilter = useDebounce(tagFilter, 500);
 
     const [minScore, setMinScore] = useState<string>("");
     const [maxScore, setMaxScore] = useState<string>("");
@@ -125,7 +131,7 @@ export function Leaderboard({ config }: LeaderboardProps) {
         // Otherwise, use the rawValue (already rounded server-side) and format explicitly.
         return scoreEntry.rawValue.toFixed(2);
     };
-    
+
     // --- Data Fetching Effects ---
 
     // Effect for fetching score sets & municipalities
@@ -136,54 +142,57 @@ export function Leaderboard({ config }: LeaderboardProps) {
             try {
                 const [sets, muniData] = await Promise.all([
                     getScoreSets(config),
-                    getMunicipalities(), 
+                    getMunicipalities(),
                 ]);
 
                 setScoreSets(sets);
-                setMunicipalities(muniData); 
-                
+                setMunicipalities(muniData);
+
                 if (sets.length > 0) {
                     const eligibilitySet = sets.find(set => set.name.en_GB === 'Eligibility Shortlisting');
-                    setSelectedScoreSet(eligibilitySet ? eligibilitySet.slug : sets[0].slug);
+                    const selectedSet = eligibilitySet || sets[0];
+                    setSelectedScoreSet(selectedSet.slug);
+                    setCurrentScoreSetName(selectedSet.name.en_GB); // ADD THIS LINE
                 }
-            } catch (err: any) { setError("Failed to load setup data (score sets or municipalities)."); } 
+            } catch (err: any) { setError("Failed to load setup data (score sets or municipalities)."); }
             finally { setIsLoadingSets(false); }
         };
         fetchData();
     }, [config]);
 
 
+
     const fetchLeaderboard = useCallback(async () => {
         if (!selectedScoreSet) return;
-        
+
         setIsLoading(true);
         setError(null);
 
         const parsedMinScore = debouncedMinScore ? parseFloat(debouncedMinScore) : undefined;
         const parsedMaxScore = debouncedMaxScore ? parseFloat(debouncedMaxScore) : undefined;
-        
+
         if (parsedMinScore !== undefined && isNaN(parsedMinScore)) { setError("Invalid Minimum Score entered."); setIsLoading(false); return; }
         if (parsedMaxScore !== undefined && isNaN(parsedMaxScore)) { setError("Invalid Maximum Score entered."); setIsLoading(false); return; }
 
         try {
             const response = await getLeaderboardPage(
-                selectedScoreSet, 
-                pagination.currentPage, 
-                pagination.perPage, 
+                selectedScoreSet,
+                pagination.currentPage,
+                pagination.perPage,
                 sortConfig,
-                debouncedTitleSearch, 
+                debouncedTitleSearch,
                 debouncedTagFilter,
                 parsedMinScore,
                 parsedMaxScore,
                 debouncedMunicipalityFilter
             );
-            
+
             if (response) {
                 setLeaderboard(response.data as LeaderboardEntry[]);
                 setPagination(p => ({ ...p, currentPage: response.current_page, lastPage: response.last_page, total: response.total }));
                 setError(null);
             } else {
-                 throw new Error("Received an invalid response from the server.");
+                throw new Error("Received an invalid response from the server.");
             }
         } catch (err: any) {
             setError(err.message || "Failed to load leaderboard data from local DB. Please synchronize data.");
@@ -191,34 +200,34 @@ export function Leaderboard({ config }: LeaderboardProps) {
             setIsLoading(false);
         }
     }, [selectedScoreSet, pagination.currentPage, pagination.perPage, sortConfig, debouncedTitleSearch, debouncedTagFilter, debouncedMinScore, debouncedMaxScore, debouncedMunicipalityFilter]);
-    
+
     // NEW: Function to fetch all data for the analytics card and breakdowns
     const fetchAnalyticsData = useCallback(async () => {
         if (!selectedScoreSet) return;
-        
+
         setIsAnalyticsLoading(true);
 
         const parsedMinScore = debouncedMinScore ? parseFloat(debouncedMinScore) : undefined;
         const parsedMaxScore = debouncedMaxScore ? parseFloat(debouncedMaxScore) : undefined;
-        
+
         // Skip fetch if parsing results in NaN
         if ((parsedMinScore !== undefined && isNaN(parsedMinScore)) || (parsedMaxScore !== undefined && isNaN(parsedMaxScore))) {
             setIsAnalyticsLoading(false);
             setFilteredApps([]);
             return;
         }
-        
+
         try {
             // Step 1: Get filtered slugs, scores, and municipalities (minimal data)
             const minimalData = await getAllLeaderboardDataForAnalytics(
                 selectedScoreSet,
-                debouncedTitleSearch, 
+                debouncedTitleSearch,
                 debouncedTagFilter,
                 parsedMinScore,
                 parsedMaxScore,
                 debouncedMunicipalityFilter
             );
-            
+
             if (minimalData.length === 0) {
                 setFilteredApps([]);
                 return;
@@ -259,37 +268,41 @@ export function Leaderboard({ config }: LeaderboardProps) {
     // Effect to reset page on filter change and fetch data
     useEffect(() => {
         if (pagination.currentPage !== 1) {
-            setPagination(p => ({...p, currentPage: 1}));
+            setPagination(p => ({ ...p, currentPage: 1 }));
         } else {
             // Only fetch leaderboard page when filters change or page is 1
             fetchLeaderboard();
         }
-        
+
         // Always fetch analytics data when filters change
-        fetchAnalyticsData(); 
-        
-    }, [selectedScoreSet, pagination.perPage, sortConfig, debouncedTitleSearch, debouncedTagFilter, debouncedMinScore, debouncedMaxScore, debouncedMunicipalityFilter]); 
+        fetchAnalyticsData();
+
+    }, [selectedScoreSet, pagination.perPage, sortConfig, debouncedTitleSearch, debouncedTagFilter, debouncedMinScore, debouncedMaxScore, debouncedMunicipalityFilter]);
 
     // Effect for page change
     useEffect(() => {
         fetchLeaderboard();
-    }, [pagination.currentPage]); 
-    
+    }, [pagination.currentPage]);
+
     // --- Action Handlers ---
 
     const handleSync = async () => {
         if (!config.apiKey || !selectedScoreSet) return;
         setIsSyncing(true);
         setError(null);
-        
+
         try {
             toast({ title: "Sync Started", description: "Fetching ALL leaderboard data from GoodGrants. This may take a while...", duration: 5000 });
             const result = await syncLeaderboard(config, selectedScoreSet);
             toast({ title: "Sync Complete", description: `Successfully synchronized ${result.syncedCount} applications.`, duration: 3000 });
+
+            // ADD THESE LINES:
+            setLastSyncTime(new Date().toISOString());
+
             // Re-fetch municipalities after sync as mapping table is updated
-            const muniData = await getMunicipalities(); 
+            const muniData = await getMunicipalities();
             setMunicipalities(muniData);
-            setPagination(p => ({...p, currentPage: 1}));
+            setPagination(p => ({ ...p, currentPage: 1 }));
         } catch (err: any) {
             setError(err.message || "Synchronization failed.");
             toast({ title: "Sync Failed", description: err.message || "Failed to synchronize data from GoodGrants API.", variant: "destructive" });
@@ -297,7 +310,7 @@ export function Leaderboard({ config }: LeaderboardProps) {
             setIsSyncing(false);
         }
     };
-    
+
     const handleViewDetails = (slug: string) => {
         setSelectedAppSlug(slug);
         setIsModalOpen(true);
@@ -305,7 +318,7 @@ export function Leaderboard({ config }: LeaderboardProps) {
 
     const handleSort = (key: SortableKeys) => {
         setSortConfig(prev => ({ key, direction: prev.key === key && prev.direction === 'asc' ? 'desc' : 'asc' }));
-        setPagination(p => ({...p, currentPage: 1}));
+        setPagination(p => ({ ...p, currentPage: 1 }));
     };
 
     const renderSortArrow = (column: SortableKeys) => {
@@ -316,7 +329,7 @@ export function Leaderboard({ config }: LeaderboardProps) {
     const changePage = (newPage: number) => {
         if (newPage > 0 && newPage <= pagination.lastPage) {
             setSelectedSlugs([]);
-            setPagination(prev => ({...prev, currentPage: newPage}));
+            setPagination(prev => ({ ...prev, currentPage: newPage }));
         }
     };
 
@@ -333,12 +346,12 @@ export function Leaderboard({ config }: LeaderboardProps) {
     const handleSelectAll = (checked: boolean) => {
         setSelectedSlugs(checked ? eligibleRows.map(r => r.slug) : []);
     };
-    
+
     const handleTagSelected = async () => {
         if (selectedSlugs.length === 0) return;
         setIsTagging(true);
         try {
-            await addEligibleTagToApplications(config, selectedSlugs,["Eligible-1"]);
+            await addEligibleTagToApplications(config, selectedSlugs, ["Eligible-1"]);
             toast({ title: "Success", description: `${selectedSlugs.length} applications tagged successfully.` });
             setSelectedSlugs([]);
             fetchLeaderboard();
@@ -348,7 +361,7 @@ export function Leaderboard({ config }: LeaderboardProps) {
             setIsTagging(false);
         }
     };
-    
+
     // Filter out potential empty strings for safe rendering in SelectItem
     const cleanMunicipalities = municipalities.filter(muni => muni && muni.trim() !== "");
 
@@ -358,10 +371,17 @@ export function Leaderboard({ config }: LeaderboardProps) {
 
     return (
         <>
+        <GenerateReportButton
+                                filteredApps={filteredApps}
+                                municipalityFilter={debouncedMunicipalityFilter}
+                                lastSyncTime={lastSyncTime}
+                                scoreSetName={currentScoreSetName}
+                                disabled={isSyncing || isAnalyticsLoading}
+                            />
             {/* UPDATED: Pass filteredApps for score analytics */}
-            <ScoreAnalyticsCard 
-                leaderboard={filteredApps as unknown as AnalyticsLeaderboardEntry[]} 
-                municipalityFilter={debouncedMunicipalityFilter} 
+            <ScoreAnalyticsCard
+                leaderboard={filteredApps as unknown as AnalyticsLeaderboardEntry[]}
+                municipalityFilter={debouncedMunicipalityFilter}
                 isLoading={isAnalyticsLoading}
             />
 
@@ -379,11 +399,12 @@ export function Leaderboard({ config }: LeaderboardProps) {
                             <CardDescription>Top ranked applications synchronized from GoodGrants.</CardDescription>
                         </div>
                         <div className="flex items-center gap-2 mt-4 md:mt-0">
+                            
                             <Button onClick={handleSync} disabled={isSyncing || !selectedScoreSet} variant="default">
                                 {isSyncing ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <RefreshCw className="mr-2 h-4 w-4" />}
                                 {isSyncing ? "Synchronizing..." : "Sync Leaderboard"}
                             </Button>
-                            <Select value={pagination.perPage.toString()} onValueChange={(value) => setPagination(p => ({...p, perPage: Number(value), currentPage: 1}))} disabled={isSyncing}>
+                            <Select value={pagination.perPage.toString()} onValueChange={(value) => setPagination(p => ({ ...p, perPage: Number(value), currentPage: 1 }))} disabled={isSyncing}>
                                 <SelectTrigger className="w-[120px]"><SelectValue /></SelectTrigger>
                                 <SelectContent>
                                     <SelectItem value="10">10 / page</SelectItem>
@@ -393,7 +414,19 @@ export function Leaderboard({ config }: LeaderboardProps) {
                                 </SelectContent>
                             </Select>
                             {isLoadingSets ? (<Skeleton className="h-10 w-[220px]" />) : (
-                                <Select value={selectedScoreSet} onValueChange={(slug) => {setPagination(p => ({...p, currentPage: 1})); setTitleSearch(""); setTagFilter(""); setMinScore(""); setMaxScore(""); setMunicipalityFilter("all"); setSelectedScoreSet(slug)}} disabled={scoreSets.length === 0 || isSyncing}>
+                                <Select value={selectedScoreSet} onValueChange={(slug) => {
+                                    const selectedSet = scoreSets.find(s => s.slug === slug);
+                                    if (selectedSet) {
+                                        setCurrentScoreSetName(selectedSet.name.en_GB); // ADD THIS LINE
+                                    }
+                                    setPagination(p => ({ ...p, currentPage: 1 }));
+                                    setTitleSearch("");
+                                    setTagFilter("");
+                                    setMinScore("");
+                                    setMaxScore("");
+                                    setMunicipalityFilter("all");
+                                    setSelectedScoreSet(slug);
+                                }} disabled={scoreSets.length === 0 || isSyncing}>
                                     <SelectTrigger className="w-[220px]"><SelectValue placeholder="Select a score set" /></SelectTrigger>
                                     <SelectContent>
                                         {scoreSets.map(set => <SelectItem key={set.slug} value={set.slug}>{set.name.en_GB}</SelectItem>)}
@@ -450,7 +483,7 @@ export function Leaderboard({ config }: LeaderboardProps) {
                         <div className="flex items-center justify-end">
                             {selectedSlugs.length > 0 && (
                                 <Button onClick={handleTagSelected} disabled={isTagging || isSyncing}>
-                                    <Tag className="mr-2 h-4 w-4"/> Tag {selectedSlugs.length} as Eligible-1
+                                    <Tag className="mr-2 h-4 w-4" /> Tag {selectedSlugs.length} as Eligible-1
                                 </Button>
                             )}
                         </div>
@@ -474,8 +507,8 @@ export function Leaderboard({ config }: LeaderboardProps) {
                                         <TableHead className="w-[150px] border-l">Municipality</TableHead>
                                     )}
                                     {uniqueCriteria.map(name => (
-                                        <TableHead 
-                                            key={name} 
+                                        <TableHead
+                                            key={name}
                                             className="text-center w-[100px] text-xs font-semibold border-l"
                                         >
                                             {name}
@@ -497,72 +530,73 @@ export function Leaderboard({ config }: LeaderboardProps) {
                                         const isEligible = isEligibleForTagging(entry);
                                         const rank = (pagination.currentPage - 1) * pagination.perPage + index + 1;
                                         return (
-                                        <TableRow key={entry.slug}>
-                                            <TableCell>
-                                                {isEligible && (
-                                                    <Checkbox
-                                                        checked={selectedSlugs.includes(entry.slug)}
-                                                        onCheckedChange={(checked) => handleSelectRow(entry.slug, !!checked)}
-                                                    />
-                                                )}
-                                            </TableCell>
-                                            <TableCell className="font-bold text-lg">{rank}</TableCell>
-                                            <TableCell className="w-[30%]">
-                                                <div>{entry.title}</div>
-                                                <div className="flex flex-wrap gap-1 mt-2">
-                                                    {entry.tags.map(tag => (
-                                                        <Badge key={tag} variant="secondary" className="font-normal">{tag}</Badge>
-                                                    ))}
-                                                </div>
-                                            </TableCell>
-                                            {showMunicipalityColumn && (
-                                                <TableCell className="w-[150px] border-l text-sm">
-                                                    <Badge variant="outline" className="font-medium">
-                                                        {entry.municipality || 'N/A'}
-                                                    </Badge>
+                                            <TableRow key={entry.slug}>
+                                                <TableCell>
+                                                    {isEligible && (
+                                                        <Checkbox
+                                                            checked={selectedSlugs.includes(entry.slug)}
+                                                            onCheckedChange={(checked) => handleSelectRow(entry.slug, !!checked)}
+                                                        />
+                                                    )}
                                                 </TableCell>
-                                            )}
-                                            {uniqueCriteria.map(critName => {
-                                                const scoreEntry = entry.scoreBreakdown?.find(c => c.name === critName);
-                                                const rawValue = scoreEntry?.rawValue || 0;
-                                                const maxScore = scoreEntry?.maxScore || 2;
-                                                
-                                                return (
-                                                    <TableCell 
-                                                        key={critName} 
-                                                        className={`text-center font-mono text-sm w-[100px] p-2 border-l ${getScoreColorClass(rawValue, maxScore)}`}
-                                                    >
-                                                        {renderScore(scoreEntry) || 'N/A'}
+                                                <TableCell className="font-bold text-lg">{rank}</TableCell>
+                                                <TableCell className="w-[30%]">
+                                                    <div>{entry.title}</div>
+                                                    <div className="flex flex-wrap gap-1 mt-2">
+                                                        {entry.tags.map(tag => (
+                                                            <Badge key={tag} variant="secondary" className="font-normal">{tag}</Badge>
+                                                        ))}
+                                                    </div>
+                                                </TableCell>
+                                                {showMunicipalityColumn && (
+                                                    <TableCell className="w-[150px] border-l text-sm">
+                                                        <Badge variant="outline" className="font-medium">
+                                                            {entry.municipality || 'N/A'}
+                                                        </Badge>
                                                     </TableCell>
-                                                );
-                                            })}
-                                            <TableCell className="text-center w-[100px] border-l">
-                                                <TooltipProvider>
-                                                    <Tooltip>
-                                                        <TooltipTrigger asChild>
-                                                            <span className="cursor-help font-semibold text-green-600">{entry.totalScore.toFixed(2)}</span>
-                                                        </TooltipTrigger>
-                                                        <TooltipContent>
-                                                            <div className="p-2 text-xs space-y-1">
-                                                                <p className="font-bold mb-1">Score Breakdown:</p>
-                                                                {entry.scoreBreakdown.length > 0 ? entry.scoreBreakdown.map(crit => (
-                                                                    <div key={crit.name} className="flex justify-between">
-                                                                        <span>{crit.name}:</span>
-                                                                        <span className="font-mono ml-4">{renderScore(crit)}</span>
-                                                                    </div>
-                                                                )) : <p>No breakdown available.</p>}
-                                                            </div>
-                                                        </TooltipContent>
-                                                    </Tooltip>
-                                                </TooltipProvider>
-                                            </TableCell>
-                                            <TableCell className="w-16 text-center">
-                                                <Button variant="ghost" size="icon" onClick={() => handleViewDetails(entry.slug)}>
-                                                    <Eye className="h-4 w-4" />
-                                                </Button>
-                                            </TableCell>
-                                        </TableRow>
-                                    )})
+                                                )}
+                                                {uniqueCriteria.map(critName => {
+                                                    const scoreEntry = entry.scoreBreakdown?.find(c => c.name === critName);
+                                                    const rawValue = scoreEntry?.rawValue || 0;
+                                                    const maxScore = scoreEntry?.maxScore || 2;
+
+                                                    return (
+                                                        <TableCell
+                                                            key={critName}
+                                                            className={`text-center font-mono text-sm w-[100px] p-2 border-l ${getScoreColorClass(rawValue, maxScore)}`}
+                                                        >
+                                                            {renderScore(scoreEntry) || 'N/A'}
+                                                        </TableCell>
+                                                    );
+                                                })}
+                                                <TableCell className="text-center w-[100px] border-l">
+                                                    <TooltipProvider>
+                                                        <Tooltip>
+                                                            <TooltipTrigger asChild>
+                                                                <span className="cursor-help font-semibold text-green-600">{entry.totalScore.toFixed(2)}</span>
+                                                            </TooltipTrigger>
+                                                            <TooltipContent>
+                                                                <div className="p-2 text-xs space-y-1">
+                                                                    <p className="font-bold mb-1">Score Breakdown:</p>
+                                                                    {entry.scoreBreakdown.length > 0 ? entry.scoreBreakdown.map(crit => (
+                                                                        <div key={crit.name} className="flex justify-between">
+                                                                            <span>{crit.name}:</span>
+                                                                            <span className="font-mono ml-4">{renderScore(crit)}</span>
+                                                                        </div>
+                                                                    )) : <p>No breakdown available.</p>}
+                                                                </div>
+                                                            </TooltipContent>
+                                                        </Tooltip>
+                                                    </TooltipProvider>
+                                                </TableCell>
+                                                <TableCell className="w-16 text-center">
+                                                    <Button variant="ghost" size="icon" onClick={() => handleViewDetails(entry.slug)}>
+                                                        <Eye className="h-4 w-4" />
+                                                    </Button>
+                                                </TableCell>
+                                            </TableRow>
+                                        )
+                                    })
                                 ) : (
                                     <TableRow><TableCell colSpan={totalColumns} className="h-24 text-center">No results found for the current score set/filters. Try syncing data.</TableCell></TableRow>
                                 )}

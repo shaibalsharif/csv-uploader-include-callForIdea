@@ -135,7 +135,7 @@ const MunicipalTooltip = ({ active, payload, label }: any) => {
     return null;
 };
 
-export function ScoreAnalyticsCard({ leaderboard, municipalityFilter, isLoading }: ScoreAnalyticsCardProps) {
+export function ScoreAnalyticsCard({ leaderboard, municipalityFilter, isLoading, }: ScoreAnalyticsCardProps) {
     const { overallData, municipalData, municipalCountData } = useMemo(() => processAnalyticsData(leaderboard), [leaderboard]); 
     const overallTotal = leaderboard.length;
     const isFiltered = municipalityFilter !== 'all';

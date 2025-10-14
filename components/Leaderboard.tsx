@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useCallback, useMemo } from 'react';
+import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "./ui/card";
 import { Button } from "./ui/button";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "./ui/table";
@@ -10,7 +10,7 @@ import { Skeleton } from "./ui/skeleton";
 import { Input } from "./ui/input";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "./ui/tooltip";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "./ui/tabs";
-import { RefreshCw, Trophy, AlertCircle, ChevronLeft, ChevronRight, ArrowUpDown, Tag, Search, Eye, MapPin, Loader2, LineChart } from 'lucide-react';
+import { RefreshCw, Trophy, AlertCircle, ChevronLeft, ChevronRight, ArrowUpDown, Tag, Search, Eye, MapPin, Loader2, Download } from 'lucide-react';
 import { getLeaderboardPage, getScoreSets, syncLeaderboard, getMunicipalities, LeaderboardEntry, ScoreBreakdown, AnalyticsLeaderboardEntry, getAllLeaderboardDataForAnalytics } from '../actions/leaderboard';
 import type { AppRawData } from '../actions/analysis';
 import { getRawApplicationsBySlugs } from '../actions/analysis';
@@ -19,8 +19,10 @@ import { useToast } from "./ui/use-toast";
 import { Badge } from './ui/badge';
 import { ApplicationDetailsInquiryModal } from './ApplicationDetailsInquiryModal';
 import { ScoreAnalyticsCard } from './ScoreAnalyticsCard';
-import type { FilteredAppRawData } from './LeaderboardBreakdowns';
+import { LeaderboardBreakdowns, FilteredAppRawData } from './LeaderboardBreakdowns';
 import { GenerateReportButton } from './GenerateReportButton';
+import { toPng } from 'html-to-image';
+
 
 type SortableKeys = 'title' | 'total_score';
 
@@ -82,11 +84,18 @@ export function Leaderboard({ config }: LeaderboardProps) {
     const [selectedAppSlug, setSelectedAppSlug] = useState<string | null>(null);
     const [lastSyncTime, setLastSyncTime] = useState<string | null>(null);
     const [currentScoreSetName, setCurrentScoreSetName] = useState<string>("");
+    
+    const tableContainerRef = useRef<HTMLDivElement>(null);
+
     const { toast } = useToast();
+
     const [pagination, setPagination] = useState({ currentPage: 1, lastPage: 1, total: 0, perPage: 20 });
     const [sortConfig, setSortConfig] = useState<{ key: SortableKeys; direction: 'asc' | 'desc' }>({ key: 'total_score', direction: 'desc' });
+
     const [titleSearch, setTitleSearch] = useState("");
     const debouncedTitleSearch = useDebounce(titleSearch, 500);
+    const [tagFilter, setTagFilter] = useState("");
+    const debouncedTagFilter = useDebounce(tagFilter, 500);
     const [minScore, setMinScore] = useState<string>("");
     const [maxScore, setMaxScore] = useState<string>("");
     const debouncedMinScore = useDebounce(minScore, 500);
@@ -97,12 +106,28 @@ export function Leaderboard({ config }: LeaderboardProps) {
     const uniqueCriteria = useMemo(() => {
         const criteriaNames = new Set<string>();
         leaderboard.forEach(entry => {
-            entry.scoreBreakdown?.forEach(crit => {
-                criteriaNames.add(crit.name);
-            });
+            entry.scoreBreakdown?.forEach(crit => criteriaNames.add(crit.name));
         });
         return Array.from(criteriaNames);
     }, [leaderboard]);
+    
+    const handleExportAsPng = useCallback(async (element: HTMLElement | null, fileName: string) => {
+        if (!element) {
+            toast({ title: "Export Failed", description: "Target element not found.", variant: "destructive" });
+            return;
+        }
+        try {
+            const dataUrl = await toPng(element, { cacheBust: true, backgroundColor: '#ffffff' });
+            const link = document.createElement('a');
+            link.download = `${fileName.replace(/\s+/g, '_').toLowerCase()}.png`;
+            link.href = dataUrl;
+            link.click();
+            toast({ title: "Export Successful", description: `${fileName}.png has been downloaded.` });
+        } catch (err) {
+            console.error("Export failed:", err);
+            toast({ title: "Export Failed", description: "An unexpected error occurred during export.", variant: "destructive" });
+        }
+    }, [toast]);
 
     const renderScore = (scoreEntry: ScoreBreakdown | undefined): string => {
         if (!scoreEntry) return 'N/A';
@@ -124,7 +149,7 @@ export function Leaderboard({ config }: LeaderboardProps) {
                     setSelectedScoreSet(selectedSet.slug);
                     setCurrentScoreSetName(selectedSet.name.en_GB);
                 }
-            } catch (err: any) { setError("Failed to load setup data (score sets or municipalities)."); }
+            } catch (err: any) { setError("Failed to load setup data."); }
             finally { setIsLoadingSets(false); }
         };
         fetchData();
@@ -134,76 +159,79 @@ export function Leaderboard({ config }: LeaderboardProps) {
         if (!selectedScoreSet) return;
         setIsLoading(true);
         setError(null);
-        const parsedMinScore = debouncedMinScore ? parseFloat(debouncedMinScore) : undefined;
-        const parsedMaxScore = debouncedMaxScore ? parseFloat(debouncedMaxScore) : undefined;
-        if (parsedMinScore !== undefined && isNaN(parsedMinScore)) { setError("Invalid Minimum Score."); setIsLoading(false); return; }
-        if (parsedMaxScore !== undefined && isNaN(parsedMaxScore)) { setError("Invalid Maximum Score."); setIsLoading(false); return; }
+        const parsedMin = debouncedMinScore ? parseFloat(debouncedMinScore) : undefined;
+        const parsedMax = debouncedMaxScore ? parseFloat(debouncedMaxScore) : undefined;
         try {
-            const response = await getLeaderboardPage(selectedScoreSet, pagination.currentPage, pagination.perPage, sortConfig, debouncedTitleSearch, "", parsedMinScore, parsedMaxScore, debouncedMunicipalityFilter);
-            if (response) {
-                setLeaderboard(response.data as LeaderboardEntry[]);
-                setPagination(p => ({ ...p, currentPage: response.current_page, lastPage: response.last_page, total: response.total }));
-                setError(null);
-            } else { throw new Error("Invalid response from server."); }
-        } catch (err: any) { setError(err.message || "Failed to load leaderboard. Please sync data."); }
-        finally { setIsLoading(false); }
-    }, [selectedScoreSet, pagination.currentPage, pagination.perPage, sortConfig, debouncedTitleSearch, debouncedMinScore, debouncedMaxScore, debouncedMunicipalityFilter]);
+            const response = await getLeaderboardPage(selectedScoreSet, pagination.currentPage, pagination.perPage, sortConfig, debouncedTitleSearch, debouncedTagFilter, parsedMin, parsedMax, debouncedMunicipalityFilter);
+            setLeaderboard(response.data as LeaderboardEntry[]);
+            setPagination(p => ({ ...p, currentPage: response.current_page, lastPage: response.last_page, total: response.total }));
+        } catch (err: any) {
+            setError(err.message || "Failed to load leaderboard data.");
+        } finally {
+            setIsLoading(false);
+        }
+    }, [selectedScoreSet, pagination.currentPage, pagination.perPage, sortConfig, debouncedTitleSearch, debouncedTagFilter, debouncedMinScore, debouncedMaxScore, debouncedMunicipalityFilter]);
 
     const fetchAnalyticsData = useCallback(async () => {
         if (!selectedScoreSet) return;
         setIsAnalyticsLoading(true);
-        const parsedMinScore = debouncedMinScore ? parseFloat(debouncedMinScore) : undefined;
-        const parsedMaxScore = debouncedMaxScore ? parseFloat(debouncedMaxScore) : undefined;
-        if ((parsedMinScore !== undefined && isNaN(parsedMinScore)) || (parsedMaxScore !== undefined && isNaN(parsedMaxScore))) {
-            setIsAnalyticsLoading(false); setFilteredApps([]); return;
-        }
+        const parsedMin = debouncedMinScore ? parseFloat(debouncedMinScore) : undefined;
+        const parsedMax = debouncedMaxScore ? parseFloat(debouncedMaxScore) : undefined;
         try {
-            const minimalData = await getAllLeaderboardDataForAnalytics(selectedScoreSet, debouncedTitleSearch, "", parsedMinScore, parsedMaxScore, debouncedMunicipalityFilter);
+            const minimalData = await getAllLeaderboardDataForAnalytics(selectedScoreSet, debouncedTitleSearch, debouncedTagFilter, parsedMin, parsedMax, debouncedMunicipalityFilter);
             if (minimalData.length === 0) { setFilteredApps([]); return; }
             const slugs = minimalData.map(d => d.slug);
             const rawDataList = await getRawApplicationsBySlugs(slugs);
-            const rawDataMap = rawDataList.reduce((acc, app) => { acc[app.slug] = app; return acc; }, {} as Record<string, AppRawData>);
-            const combinedData: FilteredAppRawData[] = minimalData.map(min => {
+            const rawDataMap = rawDataList.reduce((acc, app) => ({ ...acc, [app.slug]: app }), {} as Record<string, AppRawData>);
+            const combinedData = minimalData.map(min => {
                 const rawApp = rawDataMap[min.slug];
-                if (!rawApp) return null;
-                return { ...rawApp, totalScore: min.totalScore, municipality: min.municipality } as FilteredAppRawData;
+                return rawApp ? { ...rawApp, totalScore: min.totalScore, municipality: min.municipality } as FilteredAppRawData : null;
             }).filter((d): d is FilteredAppRawData => d !== null);
             setFilteredApps(combinedData);
-        } catch (err) { console.error("Failed to load analytics data:", err); setFilteredApps([]); }
-        finally { setIsAnalyticsLoading(false); }
-    }, [selectedScoreSet, debouncedTitleSearch, debouncedMinScore, debouncedMaxScore, debouncedMunicipalityFilter]);
+        } catch (err) {
+            console.error("Failed to load analytics data:", err);
+            setFilteredApps([]);
+        } finally {
+            setIsAnalyticsLoading(false);
+        }
+    }, [selectedScoreSet, debouncedTitleSearch, debouncedTagFilter, debouncedMinScore, debouncedMaxScore, debouncedMunicipalityFilter]);
 
     useEffect(() => {
-        if (pagination.currentPage !== 1) setPagination(p => ({ ...p, currentPage: 1 }));
-        else fetchLeaderboard();
+        if (pagination.currentPage !== 1) setPagination(p => ({ ...p, currentPage: 1 })); else fetchLeaderboard();
         fetchAnalyticsData();
-    }, [selectedScoreSet, pagination.perPage, sortConfig, debouncedTitleSearch, debouncedMinScore, debouncedMaxScore, debouncedMunicipalityFilter]);
+    }, [selectedScoreSet, pagination.perPage, sortConfig, debouncedTitleSearch, debouncedTagFilter, debouncedMinScore, debouncedMaxScore, debouncedMunicipalityFilter]);
 
     useEffect(() => { fetchLeaderboard(); }, [pagination.currentPage]);
 
     const handleSync = async () => {
         if (!config.apiKey || !selectedScoreSet) return;
-        setIsSyncing(true); setError(null);
+        setIsSyncing(true);
+        setError(null);
         try {
-            toast({ title: "Sync Started", description: "Fetching ALL leaderboard data. This may take time...", duration: 5000 });
+            toast({ title: "Sync Started", description: "Fetching ALL leaderboard data. This may take a while..." });
             const result = await syncLeaderboard(config, selectedScoreSet);
-            toast({ title: "Sync Complete", description: `Synchronized ${result.syncedCount} applications.`, duration: 3000 });
+            toast({ title: "Sync Complete", description: `Synchronized ${result.syncedCount} applications.` });
             setLastSyncTime(new Date().toISOString());
-            setMunicipalities(await getMunicipalities());
+            const muniData = await getMunicipalities();
+            setMunicipalities(muniData);
             setPagination(p => ({ ...p, currentPage: 1 }));
         } catch (err: any) {
             setError(err.message || "Synchronization failed.");
-            toast({ title: "Sync Failed", description: err.message || "Failed to sync from API.", variant: "destructive" });
-        } finally { setIsSyncing(false); }
+            toast({ title: "Sync Failed", description: err.message, variant: "destructive" });
+        } finally {
+            setIsSyncing(false);
+        }
     };
 
+    const handleViewDetails = (slug: string) => { setSelectedAppSlug(slug); setIsModalOpen(true); };
     const handleSort = (key: SortableKeys) => { setSortConfig(prev => ({ key, direction: prev.key === key && prev.direction === 'asc' ? 'desc' : 'asc' })); };
-    const renderSortArrow = (column: SortableKeys) => { if (sortConfig.key !== column) return <ArrowUpDown className="ml-2 h-4 w-4 text-muted-foreground/50" />; return sortConfig.direction === 'asc' ? '▲' : '▼'; };
+    const renderSortArrow = (column: SortableKeys) => (sortConfig.key !== column ? <ArrowUpDown className="ml-2 h-4 w-4 text-muted-foreground/50" /> : sortConfig.direction === 'asc' ? '▲' : '▼');
     const changePage = (newPage: number) => { if (newPage > 0 && newPage <= pagination.lastPage) setPagination(prev => ({ ...prev, currentPage: newPage })); };
     const isEligibleForTagging = (entry: LeaderboardEntry) => !entry.tags?.includes('Eligible-1');
     const eligibleRows = useMemo(() => leaderboard.filter(isEligibleForTagging), [leaderboard]);
     const handleSelectRow = (slug: string, checked: boolean) => setSelectedSlugs(prev => checked ? [...prev, slug] : prev.filter(s => s !== slug));
     const handleSelectAll = (checked: boolean) => setSelectedSlugs(checked ? eligibleRows.map(r => r.slug) : []);
+
     const handleTagSelected = async () => {
         if (selectedSlugs.length === 0) return;
         setIsTagging(true);
@@ -212,137 +240,125 @@ export function Leaderboard({ config }: LeaderboardProps) {
             toast({ title: "Success", description: `${selectedSlugs.length} applications tagged.` });
             setSelectedSlugs([]);
             fetchLeaderboard();
-        } catch (err: any) { toast({ title: "Tagging Failed", description: err.message, variant: "destructive" }); }
-        finally { setIsTagging(false); }
+        } catch (err: any) {
+            toast({ title: "Tagging Failed", description: err.message, variant: "destructive" });
+        } finally { setIsTagging(false); }
     };
 
     const cleanMunicipalities = municipalities.filter(muni => muni && muni.trim() !== "");
     const showMunicipalityColumn = debouncedMunicipalityFilter === 'all';
     const totalColumns = 6 + uniqueCriteria.length + (showMunicipalityColumn ? 1 : 0);
 
-    const Controls = () => (
-        <div className="my-4 p-4 border rounded-lg bg-muted/20">
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4">
-                <div className="relative">
-                    <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-                    <Input placeholder="Search title" value={titleSearch} onChange={(e) => setTitleSearch(e.target.value)} className="pl-10" disabled={isSyncing} />
-                </div>
-                <Select value={municipalityFilter} onValueChange={setMunicipalityFilter} disabled={isSyncing || municipalities.length === 0}>
-                    <SelectTrigger className="w-full">
-                        <MapPin className="h-4 w-4 text-muted-foreground mr-2" />
-                        <SelectValue placeholder="Filter by Municipality" />
-                    </SelectTrigger>
-                    <SelectContent>
-                        <SelectItem value="all">All Municipalities</SelectItem>
-                        {cleanMunicipalities.map(muni => (<SelectItem key={muni} value={muni}>{muni}</SelectItem>))}
-                    </SelectContent>
-                </Select>
-                <Input type="number" placeholder="Min Score" value={minScore} onChange={(e) => setMinScore(e.target.value)} disabled={isSyncing} className="text-center" />
-                <Input type="number" placeholder="Max Score" value={maxScore} onChange={(e) => setMaxScore(e.target.value)} disabled={isSyncing} className="text-center" />
-                {isLoadingSets ? (<Skeleton className="h-10 w-full" />) : (
-                    <Select value={selectedScoreSet} onValueChange={(slug) => {
-                        const selectedSet = scoreSets.find(s => s.slug === slug);
-                        if (selectedSet) setCurrentScoreSetName(selectedSet.name.en_GB);
-                        setSelectedScoreSet(slug);
-                    }} disabled={scoreSets.length === 0 || isSyncing}>
-                        <SelectTrigger><SelectValue placeholder="Select score set" /></SelectTrigger>
-                        <SelectContent>
-                            {scoreSets.map(set => <SelectItem key={set.slug} value={set.slug}>{set.name.en_GB}</SelectItem>)}
-                        </SelectContent>
-                    </Select>
-                )}
-            </div>
-        </div>
-    );
-
     return (
-        <>
-            <Card className="mt-6 w-full mx-auto">
-                <CardHeader>
-                    <div className="md:flex justify-between items-start">
-                        <div>
-                            <CardTitle className="text-2xl">Leaderboard & Analytics</CardTitle>
-                            <CardDescription>Analyze and manage applications from GoodGrants.</CardDescription>
-                        </div>
-                        <div className="flex items-center gap-2 mt-4 md:mt-0">
-                            <GenerateReportButton filteredApps={filteredApps} municipalityFilter={debouncedMunicipalityFilter} lastSyncTime={lastSyncTime} scoreSetName={currentScoreSetName} minScore={debouncedMinScore} maxScore={debouncedMaxScore} disabled={isSyncing || isAnalyticsLoading} />
-                            <Button onClick={handleSync} disabled={isSyncing || !selectedScoreSet} variant="default">
-                                {isSyncing ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <RefreshCw className="mr-2 h-4 w-4" />}
-                                Sync Leaderboard
-                            </Button>
-                        </div>
+        <Card className="mt-6 shadow-lg">
+            <CardHeader>
+                <div className="md:flex justify-between items-start">
+                    <div>
+                        <CardTitle className="flex items-center gap-2"><Trophy className="w-6 h-6" /> Leaderboard & Analytics</CardTitle>
+                        <CardDescription>Analyze and manage applications synchronized from GoodGrants.</CardDescription>
                     </div>
-                </CardHeader>
-                <CardContent>
-                    <Tabs defaultValue="leaderboard" className="w-full">
-                        <TabsList className="grid w-full grid-cols-2">
-                            <TabsTrigger value="leaderboard"><Trophy className="w-4 h-4 mr-2" />Leaderboard</TabsTrigger>
-                            <TabsTrigger value="analytics"><LineChart className="w-4 h-4 mr-2" />Analytics</TabsTrigger>
-                        </TabsList>
-                        <TabsContent value="leaderboard">
-                            <Controls />
-                            {selectedSlugs.length > 0 && (
-                                <div className="flex items-center justify-end mb-4">
-                                    <Button onClick={handleTagSelected} disabled={isTagging || isSyncing}>
-                                        <Tag className="mr-2 h-4 w-4" /> Tag {selectedSlugs.length} as Eligible-1
-                                    </Button>
+                    <div className="flex items-center gap-2 mt-4 md:mt-0 flex-wrap">
+                        <GenerateReportButton filteredApps={filteredApps} municipalityFilter={debouncedMunicipalityFilter} lastSyncTime={lastSyncTime} scoreSetName={currentScoreSetName} minScore={debouncedMinScore} maxScore={debouncedMaxScore} disabled={isSyncing || isAnalyticsLoading} />
+                        <Button onClick={handleSync} disabled={isSyncing || !selectedScoreSet}><RefreshCw className="mr-2 h-4 w-4" /> Sync</Button>
+                        <Select value={selectedScoreSet} onValueChange={(slug) => {
+                            const set = scoreSets.find(s => s.slug === slug);
+                            if (set) setCurrentScoreSetName(set.name.en_GB);
+                            setSelectedScoreSet(slug);
+                        }} disabled={isLoadingSets || isSyncing}>
+                            <SelectTrigger className="w-[220px]"><SelectValue placeholder="Select score set" /></SelectTrigger>
+                            <SelectContent>{scoreSets.map(set => <SelectItem key={set.slug} value={set.slug}>{set.name.en_GB}</SelectItem>)}</SelectContent>
+                        </Select>
+                    </div>
+                </div>
+            </CardHeader>
+            <CardContent>
+                <Tabs defaultValue="leaderboard">
+                    <TabsList className="grid w-full grid-cols-2">
+                        <TabsTrigger value="leaderboard">Leaderboard</TabsTrigger>
+                        <TabsTrigger value="analytics">Analytics</TabsTrigger>
+                    </TabsList>
+                    <TabsContent value="leaderboard">
+                        <div ref={tableContainerRef}>
+                            <div className="my-4 p-4 border rounded-lg bg-muted/40">
+                               <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5 gap-4">
+                                    <Input placeholder="Search title..." value={titleSearch} onChange={(e) => setTitleSearch(e.target.value)} className="pl-4" disabled={isSyncing} />
+                                    <Select value={municipalityFilter} onValueChange={setMunicipalityFilter} disabled={isSyncing || municipalities.length === 0}>
+                                        <SelectTrigger><SelectValue placeholder="Filter Municipality" /></SelectTrigger>
+                                        <SelectContent><SelectItem value="all">All Municipalities</SelectItem>{cleanMunicipalities.map(muni => <SelectItem key={muni} value={muni}>{muni}</SelectItem>)}</SelectContent>
+                                    </Select>
+                                    <Input type="number" placeholder="Min Score" value={minScore} onChange={(e) => setMinScore(e.target.value)} disabled={isSyncing} />
+                                    <Input type="number" placeholder="Max Score" value={maxScore} onChange={(e) => setMaxScore(e.target.value)} disabled={isSyncing} />
+                                    <div className="flex items-center justify-end xl:col-span-1">
+                                         <Button variant="outline" onClick={() => handleExportAsPng(tableContainerRef.current, 'Leaderboard Table')} disabled={isLoading || isSyncing}><Download className="mr-2 h-4 w-4" />Export PNG</Button>
+                                    </div>
                                 </div>
-                            )}
+                            </div>
+                            <div className="my-4 flex justify-between items-center">
+                                <div className="text-sm text-muted-foreground">{pagination.total} applications found.</div>
+                                {selectedSlugs.length > 0 && (<Button onClick={handleTagSelected} disabled={isTagging || isSyncing}><Tag className="mr-2 h-4 w-4" /> Tag {selectedSlugs.length} as Eligible</Button>)}
+                            </div>
                             <div className="rounded-md border overflow-x-auto">
-                                <Table>
-                                    <TableHeader>
-                                        <TableRow>
-                                            <TableHead><Checkbox checked={eligibleRows.length > 0 && selectedSlugs.length === eligibleRows.length} onCheckedChange={handleSelectAll} disabled={eligibleRows.length === 0} /></TableHead>
-                                            <TableHead>Rank</TableHead>
-                                            <TableHead className="cursor-pointer" onClick={() => handleSort('title')}>Title {renderSortArrow('title')}</TableHead>
-                                            {showMunicipalityColumn && <TableHead>Municipality</TableHead>}
-                                            {uniqueCriteria.map(name => <TableHead key={name} className="text-center">{name}</TableHead>)}
-                                            <TableHead className="cursor-pointer text-center" onClick={() => handleSort('total_score')}>Score {renderSortArrow('total_score')}</TableHead>
-                                            <TableHead className="text-center">Actions</TableHead>
-                                        </TableRow>
-                                    </TableHeader>
+                                <Table className="min-w-[1200px]">
+                                    <TableHeader><TableRow>
+                                        <TableHead className="w-12"><Checkbox checked={selectedSlugs.length > 0 && eligibleRows.length > 0 && selectedSlugs.length === eligibleRows.length} onCheckedChange={handleSelectAll} disabled={eligibleRows.length === 0 || isSyncing} /></TableHead>
+                                        <TableHead className="w-16">Rank</TableHead>
+                                        <TableHead className="cursor-pointer w-[30%]" onClick={() => handleSort('title')}>Application Title & Tags {renderSortArrow('title')}</TableHead>
+                                        {showMunicipalityColumn && (<TableHead className="w-[150px] border-l">Municipality</TableHead>)}
+                                        {uniqueCriteria.map(name => (<TableHead key={name} className="text-center w-[100px] text-xs font-semibold border-l">{name}</TableHead>))}
+                                        <TableHead className="cursor-pointer text-center w-[100px] border-l" onClick={() => handleSort('total_score')}>Total Score {renderSortArrow('total_score')}</TableHead>
+                                        <TableHead className="w-16 text-center">Actions</TableHead>
+                                    </TableRow></TableHeader>
                                     <TableBody>
-                                        {isLoading || isSyncing ? Array.from({ length: pagination.perPage }).map((_, i) => <SkeletonRow key={i} />)
-                                            : error ? <TableRow><TableCell colSpan={totalColumns} className="h-24 text-center text-red-500"><AlertCircle className="mx-auto h-6 w-6 mb-2" />{error}</TableCell></TableRow>
-                                                : leaderboard.length > 0 ? leaderboard.map((entry, index) => (
-                                                    <TableRow key={entry.slug}>
-                                                        <TableCell>{isEligibleForTagging(entry) && <Checkbox checked={selectedSlugs.includes(entry.slug)} onCheckedChange={(c) => handleSelectRow(entry.slug, !!c)} />}</TableCell>
-                                                        <TableCell>{(pagination.currentPage - 1) * pagination.perPage + index + 1}</TableCell>
-                                                        <TableCell>
-                                                            <div>{entry.title}</div>
-                                                            <div className="flex flex-wrap gap-1 mt-1">{entry.tags.map(t => <Badge key={t} variant="secondary">{t}</Badge>)}</div>
-                                                        </TableCell>
-                                                        {showMunicipalityColumn && <TableCell><Badge variant="outline">{entry.municipality || 'N/A'}</Badge></TableCell>}
-                                                        {uniqueCriteria.map(crit => <TableCell key={crit} className={`text-center font-mono ${getScoreColorClass(entry.scoreBreakdown?.find(c => c.name === crit)?.rawValue || 0, entry.scoreBreakdown?.find(c => c.name === crit)?.maxScore || 2)}`}>{renderScore(entry.scoreBreakdown?.find(c => c.name === crit))}</TableCell>)}
-                                                        <TableCell className="text-center font-semibold text-green-600">{entry.totalScore.toFixed(2)}</TableCell>
-                                                        <TableCell className="text-center"><Button variant="ghost" size="icon" onClick={() => { setSelectedAppSlug(entry.slug); setIsModalOpen(true); }}><Eye className="h-4 w-4" /></Button></TableCell>
-                                                    </TableRow>
-                                                )) : <TableRow><TableCell colSpan={totalColumns} className="h-24 text-center">No results found.</TableCell></TableRow>}
+                                        {isLoading || isSyncing ? Array.from({ length: 10 }).map((_, i) => <SkeletonRow key={i} />)
+                                        : error ? <TableRow><TableCell colSpan={totalColumns} className="h-24 text-center text-red-500"><AlertCircle className="mx-auto h-6 w-6 mb-2" />{error}</TableCell></TableRow>
+                                        : leaderboard.length > 0 ? leaderboard.map((entry, index) => {
+                                            const rank = (pagination.currentPage - 1) * pagination.perPage + index + 1;
+                                            return (<TableRow key={entry.slug}>
+                                                <TableCell>{isEligibleForTagging(entry) && <Checkbox checked={selectedSlugs.includes(entry.slug)} onCheckedChange={(c) => handleSelectRow(entry.slug, !!c)} />}</TableCell>
+                                                <TableCell className="font-bold text-lg">{rank}</TableCell>
+                                                <TableCell><div>{entry.title}</div><div className="flex flex-wrap gap-1 mt-2">{entry.tags.map(tag => <Badge key={tag} variant="secondary">{tag}</Badge>)}</div></TableCell>
+                                                {showMunicipalityColumn && <TableCell className="border-l text-sm"><Badge variant="outline">{entry.municipality || 'N/A'}</Badge></TableCell>}
+                                                {uniqueCriteria.map(critName => {
+                                                    const scoreEntry = entry.scoreBreakdown?.find(c => c.name === critName);
+                                                    return (<TableCell key={critName} className={`text-center font-mono text-sm border-l ${getScoreColorClass(scoreEntry?.rawValue || 0, scoreEntry?.maxScore || 2)}`}>{renderScore(scoreEntry)}</TableCell>);
+                                                })}
+                                                <TableCell className="text-center border-l"><TooltipProvider><Tooltip><TooltipTrigger asChild><span className="cursor-help font-semibold text-lg text-green-600">{entry.totalScore.toFixed(2)}</span></TooltipTrigger><TooltipContent><p className="font-bold">Breakdown:</p>{entry.scoreBreakdown.map(c => <div key={c.name}>{c.name}: <span className="font-mono">{renderScore(c)}</span></div>)}</TooltipContent></Tooltip></TooltipProvider></TableCell>
+                                                <TableCell className="text-center"><Button variant="ghost" size="icon" onClick={() => handleViewDetails(entry.slug)}><Eye className="h-4 w-4" /></Button></TableCell>
+                                            </TableRow>);
+                                        })
+                                        : <TableRow><TableCell colSpan={totalColumns} className="h-24 text-center">No results found for the current filters.</TableCell></TableRow>}
                                     </TableBody>
                                 </Table>
                             </div>
-                            <div className="flex items-center justify-between py-4">
-                                <Select value={String(pagination.perPage)} onValueChange={v => setPagination(p => ({ ...p, perPage: +v, currentPage: 1 }))}>
+                            <div className="flex items-center justify-end space-x-2 py-4">
+                                <Select value={pagination.perPage.toString()} onValueChange={(v) => setPagination(p => ({ ...p, perPage: Number(v), currentPage: 1 }))}>
                                     <SelectTrigger className="w-[120px]"><SelectValue /></SelectTrigger>
-                                    <SelectContent><SelectItem value="10">10/page</SelectItem><SelectItem value="20">20/page</SelectItem><SelectItem value="50">50/page</SelectItem></SelectContent>
+                                    <SelectContent><SelectItem value="10">10/page</SelectItem><SelectItem value="20">20/page</SelectItem><SelectItem value="50">50/page</SelectItem><SelectItem value="100">100/page</SelectItem></SelectContent>
                                 </Select>
-                                <div className="flex items-center space-x-2">
-                                    <span>Page {pagination.currentPage} of {pagination.lastPage}</span>
-                                    <Button variant="outline" size="sm" onClick={() => changePage(pagination.currentPage - 1)} disabled={pagination.currentPage <= 1}><ChevronLeft /></Button>
-                                    <Button variant="outline" size="sm" onClick={() => changePage(pagination.currentPage + 1)} disabled={pagination.currentPage >= pagination.lastPage}><ChevronRight /></Button>
-                                </div>
+                                <span className="text-sm text-muted-foreground">Page {pagination.currentPage} of {pagination.lastPage}</span>
+                                <Button variant="outline" size="sm" onClick={() => changePage(pagination.currentPage - 1)} disabled={pagination.currentPage <= 1}><ChevronLeft className="h-4 w-4" /></Button>
+                                <Button variant="outline" size="sm" onClick={() => changePage(pagination.currentPage + 1)} disabled={pagination.currentPage >= pagination.lastPage}><ChevronRight className="h-4 w-4" /></Button>
                             </div>
-                        </TabsContent>
-                        <TabsContent value="analytics" className="p-1 pt-4">
-                            <Controls />
-                            <ScoreAnalyticsCard leaderboard={filteredApps as unknown as AnalyticsLeaderboardEntry[]} municipalityFilter={debouncedMunicipalityFilter} isLoading={isAnalyticsLoading} scoreSetName={currentScoreSetName}
-                                filteredApps={filteredApps} />
-                        </TabsContent>
-                    </Tabs>
-                </CardContent>
-            </Card>
+                        </div>
+                    </TabsContent>
+                    <TabsContent value="analytics">
+                        <div className="my-4 p-4 border rounded-lg bg-muted/40">
+                             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-2 xl:grid-cols-4 gap-4">
+                                <Input placeholder="Search title..." value={titleSearch} onChange={(e) => setTitleSearch(e.target.value)} className="pl-4" disabled={isSyncing} />
+                                <Select value={municipalityFilter} onValueChange={setMunicipalityFilter} disabled={isSyncing || municipalities.length === 0}>
+                                    <SelectTrigger><SelectValue placeholder="Filter Municipality" /></SelectTrigger>
+                                    <SelectContent><SelectItem value="all">All Municipalities</SelectItem>{cleanMunicipalities.map(muni => <SelectItem key={muni} value={muni}>{muni}</SelectItem>)}</SelectContent>
+                                </Select>
+                                <Input type="number" placeholder="Min Score" value={minScore} onChange={(e) => setMinScore(e.target.value)} disabled={isSyncing} />
+                                <Input type="number" placeholder="Max Score" value={maxScore} onChange={(e) => setMaxScore(e.target.value)} disabled={isSyncing} />
+                            </div>
+                        </div>
+                        <ScoreAnalyticsCard leaderboard={filteredApps as unknown as AnalyticsLeaderboardEntry[]} municipalityFilter={debouncedMunicipalityFilter} isLoading={isAnalyticsLoading} scoreSetName={currentScoreSetName} filteredApps={filteredApps} />
+                    </TabsContent>
+                </Tabs>
+            </CardContent>
             <ApplicationDetailsInquiryModal isOpen={isModalOpen} onClose={() => setIsModalOpen(false)} applicationSlug={selectedAppSlug} />
-        </>
+        </Card>
     );
 }
 

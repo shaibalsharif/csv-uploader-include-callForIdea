@@ -3,6 +3,7 @@
 import { useMemo, useState, useRef, useCallback, Ref } from 'react';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, PieChart, Pie, Cell, Sector } from 'recharts';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
+import { Button } from '@/components/ui/button';
 import { Loader2 } from 'lucide-react';
 import type { AnalyticsLeaderboardEntry } from '@/actions/leaderboard';
 import type { FilteredAppRawData } from '@/components/LeaderboardBreakdowns';
@@ -79,7 +80,7 @@ const useAnalyticsData = (leaderboard: AnalyticsLeaderboardEntry[], filteredApps
             categoryData: toChartData(createBreakdown(app => app.category?.name?.en_GB || 'Uncategorized')).sort((a, b) => b.value - a.value),
             municipalCountData: Object.entries(municipalMap).map(([muni, data]) => ({ municipality: muni, count: data.total })).sort((a, b) => b.count - a.count),
             municipalScoreData: Object.entries(municipalMap).map(([muni, counts]) => ({ municipality: muni, 'Score = 6': counts.total > 0 ? parseFloat(((counts.SCORE_6 / counts.total) * 100).toFixed(1)) : 0, 'Score ≥ 5': counts.total > 0 ? parseFloat(((counts.GTE_5 / counts.total) * 100).toFixed(1)) : 0, 'Score ≥ 4': counts.total > 0 ? parseFloat(((counts.GTE_4 / counts.total) * 100).toFixed(1)) : 0, 'Score < 4': counts.total > 0 ? parseFloat(((counts.LT_4 / counts.total) * 100).toFixed(1)) : 0, total: counts.total })).sort((a, b) => b.total - a.total),
-            challengeData: toChartData(createBreakdown(app => extractPsCodeAndLabel(app, challengeStatementSlugs))).sort((a, b) => b.value - a.value),
+            challengeData: toChartData(createBreakdown(app => extractPsCodeAndLabel(app, challengeStatementSlugs))).sort((a, b) => a.name.localeCompare(b.name)),
         };
     }, [leaderboard, filteredApps]);
 };
@@ -118,8 +119,9 @@ export function ScoreAnalyticsCard({ leaderboard, municipalityFilter, isLoading,
 
     const ChartCard = ({ title, chartRef, children }: { title: string; chartRef: Ref<HTMLDivElement>; children: React.ReactNode; }) => (
         <div ref={chartRef} className="bg-white rounded-xl"><Card><CardHeader>
-            <CardTitle className="text-base">{title}</CardTitle>
-        </CardHeader><CardContent>{children}</CardContent></Card></div>
+            <div className="flex justify-between items-center">
+                <CardTitle className="text-base">{title}</CardTitle>
+            </div></CardHeader><CardContent>{children}</CardContent></Card></div>
     );
 
     if (isLoading) return <Card className="shadow-lg mt-6"><CardContent className="flex items-center justify-center py-24"><Loader2 className="h-8 w-8 animate-spin mr-3" /> Loading Analytics...</CardContent></Card>;

@@ -21,7 +21,6 @@ import { ApplicationDetailsInquiryModal } from './ApplicationDetailsInquiryModal
 import { ScoreAnalyticsCard } from './ScoreAnalyticsCard';
 import { LeaderboardBreakdowns, FilteredAppRawData } from './LeaderboardBreakdowns';
 import { GenerateReportButton } from './GenerateReportButton';
-import { toPng } from 'html-to-image';
 
 
 type SortableKeys = 'title' | 'total_score';
@@ -111,24 +110,6 @@ export function Leaderboard({ config }: LeaderboardProps) {
         return Array.from(criteriaNames);
     }, [leaderboard]);
     
-    const handleExportAsPng = useCallback(async (element: HTMLElement | null, fileName: string) => {
-        if (!element) {
-            toast({ title: "Export Failed", description: "Target element not found.", variant: "destructive" });
-            return;
-        }
-        try {
-            const dataUrl = await toPng(element, { cacheBust: true, backgroundColor: '#ffffff' });
-            const link = document.createElement('a');
-            link.download = `${fileName.replace(/\s+/g, '_').toLowerCase()}.png`;
-            link.href = dataUrl;
-            link.click();
-            toast({ title: "Export Successful", description: `${fileName}.png has been downloaded.` });
-        } catch (err) {
-            console.error("Export failed:", err);
-            toast({ title: "Export Failed", description: "An unexpected error occurred during export.", variant: "destructive" });
-        }
-    }, [toast]);
-
     const renderScore = (scoreEntry: ScoreBreakdown | undefined): string => {
         if (!scoreEntry) return 'N/A';
         if (scoreEntry.score.includes('/')) return scoreEntry.score;
@@ -288,9 +269,6 @@ export function Leaderboard({ config }: LeaderboardProps) {
                                     </Select>
                                     <Input type="number" placeholder="Min Score" value={minScore} onChange={(e) => setMinScore(e.target.value)} disabled={isSyncing} />
                                     <Input type="number" placeholder="Max Score" value={maxScore} onChange={(e) => setMaxScore(e.target.value)} disabled={isSyncing} />
-                                    <div className="flex items-center justify-end xl:col-span-1">
-                                         <Button variant="outline" onClick={() => handleExportAsPng(tableContainerRef.current, 'Leaderboard Table')} disabled={isLoading || isSyncing}><Download className="mr-2 h-4 w-4" />Export PNG</Button>
-                                    </div>
                                 </div>
                             </div>
                             <div className="my-4 flex justify-between items-center">
@@ -361,3 +339,4 @@ export function Leaderboard({ config }: LeaderboardProps) {
         </Card>
     );
 }
+

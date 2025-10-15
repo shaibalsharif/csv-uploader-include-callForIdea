@@ -1,14 +1,14 @@
 "use client";
 
 import { useState } from 'react';
-import { Button } from './ui/button';
+import { Button } from '@/components/ui/button';
 import { FileText, Loader2 } from 'lucide-react';
-import { useToast } from './ui/use-toast';
-import type { FilteredAppRawData } from './LeaderboardBreakdowns';
-import { generatePDFReport } from '../actions/reportGeneration';
+import { useToast } from '@/components/ui/use-toast';
+import type { FilteredAppRawData } from '@/components/LeaderboardBreakdowns';
+import { generatePDFReport } from '@/actions/reportGeneration';
 import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
-import { GIZ_LOGO_BASE64, TILLER_LOGO_BASE64 } from '../lib/logo-base64';
+import { GIZ_LOGO_BASE64, TILLER_LOGO_BASE64 } from '@/lib/logo-base64';
 
 // --- Type Definitions ---
 interface GenerateReportButtonProps {
@@ -116,9 +116,9 @@ export function GenerateReportButton({
                 }
             };
             
-            const transformForChart = (dataObject: Record<string, number>) => Object.entries(dataObject).map(([label, value]) => ({ label, value })).sort((a,b) => b.value - a.value);
             const totalApps = reportData.metadata.totalApplications;
             const getTableData = (data: Record<string, number>) => Object.entries(data).map(([key, count]) => [key, count.toString(), `${totalApps > 0 ? ((count / totalApps) * 100).toFixed(1) : 0}%`]).sort((a,b) => Number(b[1]) - Number(a[1]));
+            const transformForChart = (dataObject: Record<string, number>) => Object.entries(dataObject).map(([label, value]) => ({ label, value })).sort((a,b) => b.value - a.value);
 
             // --- Content Sections ---
             addSection('1. Score Distribution', getTableData(reportData.scoreDistribution).sort((a,b) => String(a[0]).localeCompare(String(b[0]))), [['Score Category', 'Count', 'Percentage']], transformForChart(reportData.scoreDistribution));
@@ -131,7 +131,17 @@ export function GenerateReportButton({
             const ageChartData = ageOrder.filter(age => reportData.ageBreakdown[age]).map(age => ({ label: age, value: reportData.ageBreakdown[age] || 0 }));
             addSection('5. Age Range Distribution', ageTableData, [['Age Range', 'Count', 'Percentage']], ageChartData);
             
-            addSection('6. Challenge Statement Distribution', getTableData(reportData.psCodeBreakdown), [['Challenge Statement', 'Count', 'Percentage']], transformForChart(reportData.psCodeBreakdown));
+            // Create lexically sorted data for challenge statements
+            const psCodeBreakdown = reportData.psCodeBreakdown;
+            const psTableData = Object.entries(psCodeBreakdown)
+                .sort((a, b) => a[0].localeCompare(b[0]))
+                .map(([key, count]) => [key, (count as number).toString(), `${totalApps > 0 ? (((count as number) / totalApps) * 100).toFixed(1) : 0}%`]);
+            const psChartData = Object.entries(psCodeBreakdown)
+                .sort((a, b) => a[0].localeCompare(b[0]))
+                .map(([label, value]) => ({ label, value: value as number }));
+
+            addSection('6. Challenge Statement Distribution', psTableData, [['Challenge Statement', 'Count', 'Percentage']], psChartData);
+
 
             // --- Save ---
             doc.save(`INCLUDE_Analytics_Report_${new Date().toISOString().replace(/[:.]/g, '-').slice(0, -5)}.pdf`);
@@ -147,3 +157,4 @@ export function GenerateReportButton({
 
     return <Button onClick={handleGenerateReport} disabled={disabled || isGenerating} variant="outline"><FileText className="mr-2 h-4 w-4" />{isGenerating ? "Generating..." : "Generate Report"}</Button>;
 }
+

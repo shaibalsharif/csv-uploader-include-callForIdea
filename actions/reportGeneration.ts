@@ -24,14 +24,14 @@ const extractFieldValue = (app: FilteredAppRawData, slug: string): string => {
 };
 
 const extractPsCodeAndLabel = (app: FilteredAppRawData, possibleSlugs: string[]): string => {
-  const rawFields = (app.raw_fields as any[]) || [];
-  const field = rawFields.find((f: any) => possibleSlugs.includes(f.slug));
-  if (!field) return "N/A";
-  const code = field.value ? String(field.value).split(" - [")[0].trim() : "N/A";
-  const label = field.translated?.en_GB || "";
-  if (code === "N/A") return "N/A";
-  return label ? `${code}: ${label}` : code;
+    const field = (app.raw_fields as any[])?.find((f: any) => possibleSlugs.includes(f.slug));
+    if (!field) return "N/A";
+    const code = field.value ? String(field.value).split(" - [")[0].trim() : "N/A";
+    const label = field.translated?.en_GB || "";
+    if (code === "N/A") return "N/A";
+    return label ? `${code}: ${label}` : code;
 };
+
 
 const abbreviateAgeLabel = (label: string): string => {
   if (label.toLowerCase().includes('below 18')) return '< 18';
@@ -77,3 +77,4 @@ export async function generatePDFReport(reportData: ReportDataRequest): Promise<
   
   return JSON.stringify(reportContent);
 }
+

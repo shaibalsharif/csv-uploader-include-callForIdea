@@ -23,15 +23,14 @@ const extractFieldValue = (app: FilteredAppRawData, slug: string): string => {
   return value !== null && value !== undefined ? String(value).split(" - [")[0].trim() : "N/A";
 };
 
-const extractPsCodeValue = (app: FilteredAppRawData, possibleSlugs: string[]): string => {
+const extractPsCodeAndLabel = (app: FilteredAppRawData, possibleSlugs: string[]): string => {
   const rawFields = (app.raw_fields as any[]) || [];
   const field = rawFields.find((f: any) => possibleSlugs.includes(f.slug));
-  const value = field?.value;
-  // New logic to also extract the label/title from the translated value
-  if (field?.translated?.en_GB) {
-     return field.translated.en_GB;
-  }
-  return value || "N/A";
+  if (!field) return "N/A";
+  const code = field.value ? String(field.value).split(" - [")[0].trim() : "N/A";
+  const label = field.translated?.en_GB || "";
+  if (code === "N/A") return "N/A";
+  return label ? `${code}: ${label}` : code;
 };
 
 const abbreviateAgeLabel = (label: string): string => {
@@ -73,9 +72,8 @@ export async function generatePDFReport(reportData: ReportDataRequest): Promise<
     categoryBreakdown: createBreakdown(app => app.category?.name?.en_GB || 'Uncategorized'),
     genderBreakdown: createBreakdown(app => extractFieldValue(app, 'rojNQzOz')),
     ageBreakdown: createBreakdown(app => abbreviateAgeLabel(extractFieldValue(app, 'xjzONPwj'))),
-    psCodeBreakdown: createBreakdown(app => extractPsCodeValue(app, ['gkknPnQp', 'jDJaNYGG', 'RjAnzBZJ', 'OJBPQyGP'])),
+    psCodeBreakdown: createBreakdown(app => extractPsCodeAndLabel(app, ['gkknPnQp', 'jDJaNYGG', 'RjAnzBZJ', 'OJBPQyGP'])),
   };
   
   return JSON.stringify(reportContent);
 }
-

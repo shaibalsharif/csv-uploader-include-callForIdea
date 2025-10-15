@@ -3,10 +3,7 @@
 import { useMemo, useState, useRef, useCallback, Ref } from 'react';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, PieChart, Pie, Cell, Sector } from 'recharts';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
-import { Button } from '@/components/ui/button';
-import { useToast } from "@/components/ui/use-toast";
-import { Loader2, Download } from 'lucide-react';
-import { toPng } from 'html-to-image';
+import { Loader2 } from 'lucide-react';
 import type { AnalyticsLeaderboardEntry } from '@/actions/leaderboard';
 import type { FilteredAppRawData } from '@/components/LeaderboardBreakdowns';
 
@@ -38,9 +35,13 @@ const SCORE_THRESHOLDS = {
 // --- Helper Functions ---
 const extractFieldValue = (app: FilteredAppRawData, slug: string): string => (app.raw_fields.find((f: any) => f.slug === slug)?.translated?.en_GB || app.raw_fields.find((f: any) => f.slug === slug)?.value?.en_GB || String(app.raw_fields.find((f: any) => f.slug === slug)?.value).split(" - [")[0].trim() || "N/A");
 const abbreviateAgeLabel = (label: string): string => label.toLowerCase().includes('below 18') ? '< 18' : label.toLowerCase().includes('above 65') ? '> 65' : label.replace(/\s*years\s*/, '-years').replace(/\s/g, '').replace(/^-/, '').trim();
-const extractPsCodeValue = (app: FilteredAppRawData, possibleSlugs: string[]): string => {
+const extractPsCodeAndLabel = (app: FilteredAppRawData, possibleSlugs: string[]): string => {
     const field = app.raw_fields.find((f: any) => possibleSlugs.includes(f.slug));
-    return field?.value ? String(field.value).split(" - [")[0].trim() : "N/A";
+    if (!field) return "N/A";
+    const code = field.value ? String(field.value).split(" - [")[0].trim() : "N/A";
+    const label = field.translated?.en_GB || "";
+    if (code === "N/A") return "N/A";
+    return label ? `${code}: ${label}` : code;
 };
 
 
@@ -78,7 +79,7 @@ const useAnalyticsData = (leaderboard: AnalyticsLeaderboardEntry[], filteredApps
             categoryData: toChartData(createBreakdown(app => app.category?.name?.en_GB || 'Uncategorized')).sort((a, b) => b.value - a.value),
             municipalCountData: Object.entries(municipalMap).map(([muni, data]) => ({ municipality: muni, count: data.total })).sort((a, b) => b.count - a.count),
             municipalScoreData: Object.entries(municipalMap).map(([muni, counts]) => ({ municipality: muni, 'Score = 6': counts.total > 0 ? parseFloat(((counts.SCORE_6 / counts.total) * 100).toFixed(1)) : 0, 'Score ≥ 5': counts.total > 0 ? parseFloat(((counts.GTE_5 / counts.total) * 100).toFixed(1)) : 0, 'Score ≥ 4': counts.total > 0 ? parseFloat(((counts.GTE_4 / counts.total) * 100).toFixed(1)) : 0, 'Score < 4': counts.total > 0 ? parseFloat(((counts.LT_4 / counts.total) * 100).toFixed(1)) : 0, total: counts.total })).sort((a, b) => b.total - a.total),
-            challengeData: toChartData(createBreakdown(app => extractPsCodeValue(app, challengeStatementSlugs))).sort((a, b) => b.value - a.value),
+            challengeData: toChartData(createBreakdown(app => extractPsCodeAndLabel(app, challengeStatementSlugs))).sort((a, b) => b.value - a.value),
         };
     }, [leaderboard, filteredApps]);
 };
@@ -108,7 +109,6 @@ const GenderPieChart = ({ data }: { data: { name: string; value: number }[] }) =
 // --- Main Component ---
 export function ScoreAnalyticsCard({ leaderboard, municipalityFilter, isLoading, scoreSetName, filteredApps }: ScoreAnalyticsCardProps) {
     const { overallData, genderData, ageData, categoryData, municipalCountData, municipalScoreData, challengeData } = useAnalyticsData(leaderboard, filteredApps);
-    const { toast } = useToast();
 
     const refs = {
         overall: useRef<HTMLDivElement>(null), gender: useRef<HTMLDivElement>(null), category: useRef<HTMLDivElement>(null),
@@ -116,24 +116,10 @@ export function ScoreAnalyticsCard({ leaderboard, municipalityFilter, isLoading,
         challenge: useRef<HTMLDivElement>(null),
     };
 
-    const handleExport = useCallback(async (elementRef: React.RefObject<HTMLDivElement>, fileName: string) => {
-        if (!elementRef.current) { toast({ title: "Export Failed", description: "Chart element not found.", variant: "destructive" }); return; }
-        try {
-            const dataUrl = await toPng(elementRef.current, { cacheBust: true, backgroundColor: '#ffffff' });
-            const link = document.createElement('a');
-            link.download = `${fileName.replace(/\s+/g, '_').toLowerCase()}.png`;
-            link.href = dataUrl;
-            link.click();
-            toast({ title: "Export Successful" });
-        } catch (err) { toast({ title: "Export Failed", description: "Could not export the chart.", variant: "destructive" }); }
-    }, [toast]);
-
-    const ChartCard = ({ title, chartRef, fileName, children }: { title: string; chartRef: Ref<HTMLDivElement>; fileName: string; children: React.ReactNode; }) => (
+    const ChartCard = ({ title, chartRef, children }: { title: string; chartRef: Ref<HTMLDivElement>; children: React.ReactNode; }) => (
         <div ref={chartRef} className="bg-white rounded-xl"><Card><CardHeader>
-            <div className="flex justify-between items-center">
-                <CardTitle className="text-base">{title}</CardTitle>
-                <Button variant="ghost" size="icon" onClick={() => handleExport(chartRef as React.RefObject<HTMLDivElement>, fileName)}><Download className="h-4 w-4" /></Button>
-            </div></CardHeader><CardContent>{children}</CardContent></Card></div>
+            <CardTitle className="text-base">{title}</CardTitle>
+        </CardHeader><CardContent>{children}</CardContent></Card></div>
     );
 
     if (isLoading) return <Card className="shadow-lg mt-6"><CardContent className="flex items-center justify-center py-24"><Loader2 className="h-8 w-8 animate-spin mr-3" /> Loading Analytics...</CardContent></Card>;
@@ -146,28 +132,28 @@ export function ScoreAnalyticsCard({ leaderboard, municipalityFilter, isLoading,
                 <CardDescription>Filter: <span className="font-semibold">{municipalityFilter === 'all' ? 'All' : municipalityFilter}</span> | Apps: <span className="font-semibold">{leaderboard.length}</span></CardDescription>
             </CardHeader></Card>
             <div className="grid gap-6 md:grid-cols-2 xl:grid-cols-3">
-                <ChartCard title="Overall Score Distribution" chartRef={refs.overall} fileName="score_distribution"><div className="space-y-4 pt-4">{overallData.map(item => (<div key={item.id} className="flex items-center justify-between text-sm">
+                <ChartCard title="Overall Score Distribution" chartRef={refs.overall}><div className="space-y-4 pt-4">{overallData.map(item => (<div key={item.id} className="flex items-center justify-between text-sm">
                     <div className="flex items-center"><div className="h-3 w-3 rounded-full mr-3" style={{ backgroundColor: COLORS[item.id as ScoreCategory] }} /><span>{item.label}</span></div>
                     <div className="font-semibold">{item.percentage}%<span className="text-muted-foreground ml-2">({item.value})</span></div>
                 </div>))}</div></ChartCard>
-                <ChartCard title="Gender Distribution" chartRef={refs.gender} fileName="gender_distribution"><div className="h-[250px]">
+                <ChartCard title="Gender Distribution" chartRef={refs.gender}><div className="h-[250px]">
                     <GenderPieChart data={genderData} />
                 </div></ChartCard>
-                <ChartCard title="Category (Digital/Non-Digital)" chartRef={refs.category} fileName="category_distribution"><div className="h-[250px]"><ResponsiveContainer width="100%" height="100%">
+                <ChartCard title="Category (Digital/Non-Digital)" chartRef={refs.category}><div className="h-[250px]"><ResponsiveContainer width="100%" height="100%">
                     <PieChart><Pie data={categoryData} dataKey="value" nameKey="name" cx="50%" cy="50%" outerRadius={80} labelLine={false} label={({ cx, cy, midAngle, innerRadius, outerRadius, percent }) => { const r = innerRadius + (outerRadius - innerRadius) * 0.5; const x = cx + r * Math.cos(-midAngle * Math.PI / 180); const y = cy + r * Math.sin(-midAngle * Math.PI / 180); return <text x={x} y={y} fill="white" textAnchor="middle" dominantBaseline="central">{`${(percent * 100).toFixed(0)}%`}</text>; }}>{categoryData.map((_, i) => <Cell key={`c-${i}`} fill={COLORS.CATEGORY[i % COLORS.CATEGORY.length]} />)}</Pie><Tooltip /><Legend /></PieChart>
                 </ResponsiveContainer></div></ChartCard>
-                <div className="md:col-span-2 xl:col-span-3"><ChartCard title="Age Range Distribution" chartRef={refs.age} fileName="age_distribution"><div className="h-[300px]"><ResponsiveContainer width="100%" height="100%">
+                <div className="md:col-span-2 xl:col-span-3"><ChartCard title="Age Range Distribution" chartRef={refs.age}><div className="h-[300px]"><ResponsiveContainer width="100%" height="100%">
                     <BarChart data={ageData} layout="vertical" margin={{ left: 20 }}><CartesianGrid strokeDasharray="3 3" /><XAxis type="number" allowDecimals={false} /><YAxis type="category" dataKey="name" width={80} /><Tooltip /><Bar dataKey="value" name="Apps" fill={COLORS.MUNI_COUNT} /></BarChart>
                 </ResponsiveContainer></div></ChartCard></div>
-                <div className="md:col-span-1 xl:col-span-3"><ChartCard title="Applications per Municipality" chartRef={refs.muniCount} fileName="municipality_application_count"><div className="h-[300px]"><ResponsiveContainer width="100%" height="100%">
+                <div className="md:col-span-1 xl:col-span-3"><ChartCard title="Applications per Municipality" chartRef={refs.muniCount}><div className="h-[300px]"><ResponsiveContainer width="100%" height="100%">
                     <BarChart data={municipalCountData} margin={{ left: 20 }}><CartesianGrid strokeDasharray="3 3" /><XAxis dataKey="municipality" /><YAxis allowDecimals={false} /><Tooltip /><Bar dataKey="count" name="Apps" fill={COLORS.MUNI_COUNT} /></BarChart>
                 </ResponsiveContainer></div></ChartCard></div>
-                <div className="md:col-span-2 xl:col-span-3"><ChartCard title="Scoring Breakdown by Municipality (%)" chartRef={refs.muniScore} fileName="municipality_score_breakdown"><div className="h-[400px]"><ResponsiveContainer width="100%" height="100%">
+                <div className="md:col-span-2 xl:col-span-3"><ChartCard title="Scoring Breakdown by Municipality (%)" chartRef={refs.muniScore}><div className="h-[400px]"><ResponsiveContainer width="100%" height="100%">
                     <BarChart data={municipalScoreData} layout="vertical" stackOffset="expand" margin={{ left: 20 }}><CartesianGrid strokeDasharray="3 3" /><XAxis type="number" tickFormatter={(t) => `${t * 100}%`} domain={[0, 1]} /><YAxis type="category" dataKey="municipality" width={100} /><Tooltip content={<MunicipalTooltip />} /><Legend />
                         <Bar dataKey="Score = 6" stackId="a" fill={COLORS.SCORE_6} /><Bar dataKey="Score ≥ 5" stackId="a" fill={COLORS.GTE_5} /><Bar dataKey="Score ≥ 4" stackId="a" fill={COLORS.GTE_4} /><Bar dataKey="Score < 4" stackId="a" fill={COLORS.LT_4} /></BarChart>
                 </ResponsiveContainer></div></ChartCard></div>
-                <div className="md:col-span-2 xl:col-span-3"><ChartCard title="Challenge Statement Distribution" chartRef={refs.challenge} fileName="challenge_statement_distribution"><div className="h-[350px]"><ResponsiveContainer width="100%" height="100%">
-                    <BarChart data={challengeData} layout="vertical" margin={{ left: 100, right: 30 }}><CartesianGrid strokeDasharray="3 3" /><XAxis type="number" allowDecimals={false} /><YAxis type="category" dataKey="name" width={250} style={{ fontSize: '12px' }} interval={0} /><Tooltip /><Bar dataKey="value" name="Applications" fill={COLORS.MUNI_COUNT} /></BarChart>
+                <div className="md:col-span-2 xl:col-span-3"><ChartCard title="Challenge Statement Distribution" chartRef={refs.challenge}><div className="h-[350px]"><ResponsiveContainer width="100%" height="100%">
+                    <BarChart data={challengeData} layout="vertical" margin={{ left: 200, right: 30 }}><CartesianGrid strokeDasharray="3 3" /><XAxis type="number" allowDecimals={false} /><YAxis type="category" dataKey="name" width={350} style={{ fontSize: '12px' }} interval={0} /><Tooltip /><Bar dataKey="value" name="Applications" fill={COLORS.MUNI_COUNT} /></BarChart>
                 </ResponsiveContainer></div></ChartCard></div>
             </div>
         </div>

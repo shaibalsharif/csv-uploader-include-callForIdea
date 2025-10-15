@@ -50,9 +50,21 @@ export function GenerateReportButton({
             let yPosition = 15;
 
             // --- Header ---
-            doc.addImage(TILLER_LOGO_BASE64, 'PNG', 15, 10, 30, 15);
-            doc.addImage(GIZ_LOGO_BASE64, 'PNG', pageWidth - 45, 10, 30, 15);
-            yPosition += 15; // Space for logos
+            const logoWidth = 30;
+
+            // Tiller Logo (aspect ratio preserved)
+            const tillerImgProps = doc.getImageProperties(TILLER_LOGO_BASE64);
+            const tillerHeight = (tillerImgProps.height * logoWidth) / tillerImgProps.width;
+            doc.addImage(TILLER_LOGO_BASE64, 'PNG', 15, 10, logoWidth, tillerHeight);
+            
+            // GIZ Logo (aspect ratio preserved)
+            const gizImgProps = doc.getImageProperties(GIZ_LOGO_BASE64);
+            const gizHeight = (gizImgProps.height * logoWidth) / gizImgProps.width;
+            doc.addImage(GIZ_LOGO_BASE64, 'PNG', pageWidth - 45, 10, logoWidth, gizHeight);
+            
+            // Set yPosition dynamically below the tallest logo
+            yPosition = 10 + Math.max(tillerHeight, gizHeight) + 10;
+            
             doc.setFontSize(18).setFont('helvetica', 'bold').text('INCLUDE Call for Ideas - Analytics Report', pageWidth / 2, yPosition, { align: 'center' });
             yPosition += 10;
             
@@ -71,7 +83,7 @@ export function GenerateReportButton({
 
             // --- PDF Generation Helpers ---
             const drawHorizontalBarChart = (title: string, data: { label: string; value: number }[]): void => {
-                const margin = 15, barHeight = 7, barPadding = 3, labelAreaWidth = 55;
+                const margin = 15, barHeight = 7, barPadding = 3, labelAreaWidth = 80; // Increased label area width
                 const chartHeight = (barHeight + barPadding) * data.length + 15;
                 if (yPosition + chartHeight > pageHeight - 15) { doc.addPage(); yPosition = 20; }
                 
@@ -135,4 +147,3 @@ export function GenerateReportButton({
 
     return <Button onClick={handleGenerateReport} disabled={disabled || isGenerating} variant="outline"><FileText className="mr-2 h-4 w-4" />{isGenerating ? "Generating..." : "Generate Report"}</Button>;
 }
-

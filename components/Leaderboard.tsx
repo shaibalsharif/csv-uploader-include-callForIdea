@@ -361,4 +361,3 @@ export function Leaderboard({ config }: LeaderboardProps) {
         </Card>
     );
 }
-

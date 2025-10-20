@@ -18,6 +18,7 @@ const WEIGHT_MAP: { [key: string]: number } = {
     'Sustainability, Scalability and (copy)': 0.2,
     'Innovativeness': 0.2,
     'Innovativeness (copy)': 0.2,
+    
     'Value Proposition and Climate Re': 0.2,
     'Value Proposition and Climate Re (copy)': 0.2,
 };

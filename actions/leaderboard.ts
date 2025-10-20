@@ -3,6 +3,24 @@
 import { sql } from "@vercel/postgres";
 import { getApplicationDetailsFromDB } from "./analysis";
 
+// --- Custom Score Calculation Constants ---
+const TECHNICAL_SLUGS = ["JljrBVpd"];
+const JURY_SLUGS = ["nmWNmZPb"];
+
+const WEIGHT_MAP: { [key: string]: number } = {
+    'Digital Transformation': 0.15,
+    'Digital Transformation (copy)': 0.15,
+    'Feasibility and Project Duration': 0.1,
+    'Feasibility and Project Duration (copy)': 0.1,
+    'Gender Equality and Inclusivenes': 0.15,
+    'Gender Equality and Inclusivenes (copy)': 0.15,
+    'Sustainability, Scalability and': 0.2,
+    'Sustainability, Scalability and (copy)': 0.2,
+    'Innovativeness': 0.2,
+    'Innovativeness (copy)': 0.2,
+    'Value Proposition and Climate Re': 0.2,
+    'Value Proposition and Climate Re (copy)': 0.2,
+};
 // --- Helper to add a delay ---
 function sleep(ms: number) {
   return new Promise((resolve) => setTimeout(resolve, ms));
@@ -115,45 +133,86 @@ async function syncMunicipalityMapping(entries: any[]) {
   await sql.query(query, values);
 }
 
-// FIX: Updated logic to sum the numeric portion of 'final_score' for each criterion
-const calculateTotalScore = (entry: any): number => {
-  // 1️⃣ If total_score.value exists, use it directly (most reliable)
-  // if (entry.scores?.total_score?.value !== undefined) {
-  //   return safeRound(Number(entry.scores.total_score.value), 2);
-  // }
+// --- Custom Score Calculation Logic ---
 
-  // 2️⃣ Otherwise, try to sum the numeric part of each 'final_score' string
-  if (entry.scores?.criteria?.length > 0) {
-    const total = entry.scores.criteria.reduce(
-      (sum: number, criterion: any) => {
-        if (criterion.final_score) {
-          // Extract number before the '/' → e.g. "1.6666666667/2" → 1.6666666667
-          const numericPart = parseFloat(
-            String(criterion.final_score).split("/")[0]
-          );
-          return sum + (isNaN(numericPart) ? 0 : numericPart);
-        }
-        // fallback if final_score not provided
-        return sum + (Number(criterion.value) || 0);
-      },
-      0
-    );
+/**
+ * Calculates the weighted score for Technical or Jury Evaluation.
+ * This function applies the base weights to all scores it receives.
+ * The exclusion of the 'Digital Transformation' score for Non-Digital ideas
+ * is handled by the Goodgrants API omitting that score in the response.
+ * @param criteria Array of criteria scores for the evaluation set.
+ * @returns The calculated weighted score.
+ */
+const calculateWeightedScore = (criteria: any[]): number => {
+  let weightedSum = 0;
+  let totalUsedWeight = 0;
 
-    return safeRound(total, 2);
+  for (const criterion of criteria) {
+    const criteriaTitle = criterion.name?.en_GB || criterion.title;
+    const baseTitle = criteriaTitle.replace(/\s\(copy\)$/i, "");
+    const baseWeight = WEIGHT_MAP[baseTitle] ?? WEIGHT_MAP[criteriaTitle];
+
+    if (baseWeight === undefined) {
+      console.warn(`Weight not found for criteria: ${criteriaTitle}.`);
+      continue;
+    }
+
+    // Skip criteria with no numeric score (e.g., N/A in GoodGrants)
+    const scoreValue = Number(criterion.value);
+    if (isNaN(scoreValue)) continue;
+
+    weightedSum += scoreValue * baseWeight;
+    totalUsedWeight += baseWeight;
   }
 
-  // 3️⃣ Fallback: auto_score or 0
-  return safeRound(Number(entry.auto_score || 0), 2);
+  if (totalUsedWeight === 0) return 0;
+
+  // --- Normalize so total weight = 1.0 (GoodGrants style) ---
+  const normalizedScore = weightedSum / totalUsedWeight;
+
+  return safeRound(normalizedScore, 2);
 };
+
+
+/**
+ * Calculates the correct total score for a single score set based on its type.
+ * Note: This function replaces the old logic and assumes the calculation
+ * is for the *specific score set* being synced.
+ */
+const calculateCustomTotalScore = (entry: any, scoreSetSlug: string): number => {
+    // NOTE: Application category is assumed to be available on the entry object for the check.
+    const criteria = entry.scores?.criteria || [];
+    // The Digital/Non-Digital check is implicitly handled by the API's omission of the score
+    // but the original logic implies checking the category. We no longer need the category
+    // check here because the simple `calculateWeightedScore` handles both cases:
+    // 6 criteria received (Digital) -> weights sum to 1.0 -> correct weighted average.
+    // 5 criteria received (Non-Digital) -> weights sum to 0.85 -> correct weighted sum (not normalized).
+
+    if (TECHNICAL_SLUGS.includes(scoreSetSlug) || JURY_SLUGS.includes(scoreSetSlug)) {
+        // Technical or Jury Evaluation: Weighted Sum
+        // This handles the digital/non-digital rules by using the provided criteria list
+        return calculateWeightedScore(criteria);
+    } else {
+        // Eligibility Shortlisting: Simple Sum of individual criteria scores
+        // This fulfills step 2: "Eligibility shortlisting will be scored in total score by summing the individual criteria scores."
+        const total = criteria.reduce((sum: number, criterion: any) => {
+            // Use the numeric value for summation
+            return sum + (Number(criterion.value) || 0);
+        }, 0);
+        return safeRound(total, 2);
+    }
+};
+
 const transformApiData = (
   entries: any[],
   scoreSetSlug: string
 ): LeaderboardEntry[] => {
   if (!entries) return [];
   return entries.map((entry: any) => {
-    // Use the fixed total score calculation
-    const totalScore = calculateTotalScore(entry);
+    // 1. Calculate the CORRECT total score for THIS score set.
+    const totalScore = calculateCustomTotalScore(entry, scoreSetSlug);
 
+    // 2. The scoreBreakdown mapping remains largely the same, but we ensure rawValue is set.
     return {
       slug: entry.slug,
       scoreSetSlug: scoreSetSlug,
@@ -162,7 +221,8 @@ const transformApiData = (
         .split(",")
         .map((t: string) => t.trim())
         .filter((t: string) => t.length > 0),
-      totalScore: totalScore, // Set the fixed totalScore
+      // 3. Store the calculated score
+      totalScore: totalScore, 
       municipality: "",
       scoreBreakdown:
         entry.scores?.criteria?.map((c: any) => ({

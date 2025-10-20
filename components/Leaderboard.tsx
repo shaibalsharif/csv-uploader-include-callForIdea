@@ -11,7 +11,10 @@ import { Input } from "./ui/input";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "./ui/tooltip";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "./ui/tabs";
 import { RefreshCw, Trophy, AlertCircle, ChevronLeft, ChevronRight, ArrowUpDown, Tag, Search, Eye, MapPin, Loader2, Download } from 'lucide-react';
-import { getLeaderboardPage, getScoreSets, syncLeaderboard, getMunicipalities, LeaderboardEntry, ScoreBreakdown, AnalyticsLeaderboardEntry, getAllLeaderboardDataForAnalytics } from '../actions/leaderboard';
+// Import syncAllLeaderboards and AlertDialog components
+import { getLeaderboardPage, getScoreSets, syncLeaderboard, syncAllLeaderboards, getMunicipalities, LeaderboardEntry, ScoreBreakdown, AnalyticsLeaderboardEntry, getAllLeaderboardDataForAnalytics } from '../actions/leaderboard';
+import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from './ui/alert-dialog';
+
 import type { AppRawData } from '../actions/analysis';
 import { getRawApplicationsBySlugs } from '../actions/analysis';
 import { addEligibleTagToApplications } from '../actions/application';
@@ -75,6 +78,8 @@ export function Leaderboard({ config }: LeaderboardProps) {
     const [isLoading, setIsLoading] = useState(true);
     const [isLoadingSets, setIsLoadingSets] = useState(true);
     const [isSyncing, setIsSyncing] = useState(false);
+    const [isSyncingAll, setIsSyncingAll] = useState(false); // New state for full sync
+    const [isConfirmModalOpen, setIsConfirmModalOpen] = useState(false); // New state for modal
     const [isTagging, setIsTagging] = useState(false);
     const [error, setError] = useState<string | null>(null);
     const [selectedScoreSet, setSelectedScoreSet] = useState<string>("");
@@ -83,7 +88,7 @@ export function Leaderboard({ config }: LeaderboardProps) {
     const [selectedAppSlug, setSelectedAppSlug] = useState<string | null>(null);
     const [lastSyncTime, setLastSyncTime] = useState<string | null>(null);
     const [currentScoreSetName, setCurrentScoreSetName] = useState<string>("");
-    
+
     const tableContainerRef = useRef<HTMLDivElement>(null);
 
     const { toast } = useToast();
@@ -109,7 +114,7 @@ export function Leaderboard({ config }: LeaderboardProps) {
         });
         return Array.from(criteriaNames);
     }, [leaderboard]);
-    
+
     const renderScore = (scoreEntry: ScoreBreakdown | undefined): string => {
         if (!scoreEntry) return 'N/A';
         if (scoreEntry.score.includes('/')) return scoreEntry.score;
@@ -125,10 +130,12 @@ export function Leaderboard({ config }: LeaderboardProps) {
                 setScoreSets(sets);
                 setMunicipalities(muniData);
                 if (sets.length > 0) {
-                    const eligibilitySet = sets.find(set => set.name.en_GB === 'Eligibility Shortlisting');
-                    const selectedSet = eligibilitySet || sets[0];
-                    setSelectedScoreSet(selectedSet.slug);
-                    setCurrentScoreSetName(selectedSet.name.en_GB);
+                    // FIX 2: Set Technical Evaluation (nmWNmZPb) as default
+                    const technicalSet = sets.find(set => set.slug === 'nmWNmZPb');
+                    const defaultSet = technicalSet || sets[0];
+
+                    setSelectedScoreSet(defaultSet.slug);
+                    setCurrentScoreSetName(defaultSet.name.en_GB);
                 }
             } catch (err: any) { setError("Failed to load setup data."); }
             finally { setIsLoadingSets(false); }
@@ -184,14 +191,16 @@ export function Leaderboard({ config }: LeaderboardProps) {
 
     useEffect(() => { fetchLeaderboard(); }, [pagination.currentPage]);
 
+    const isAnySyncing = isSyncing || isSyncingAll;
+
     const handleSync = async () => {
         if (!config.apiKey || !selectedScoreSet) return;
         setIsSyncing(true);
         setError(null);
         try {
-            toast({ title: "Sync Started", description: "Fetching ALL leaderboard data. This may take a while..." });
+            toast({ title: "Sync Started", description: `Fetching leaderboard data for ${currentScoreSetName}. This may take a while...` });
             const result = await syncLeaderboard(config, selectedScoreSet);
-            toast({ title: "Sync Complete", description: `Synchronized ${result.syncedCount} applications.` });
+            toast({ title: "Sync Complete", description: `Synchronized ${result.syncedCount} applications for ${currentScoreSetName}.` });
             setLastSyncTime(new Date().toISOString());
             const muniData = await getMunicipalities();
             setMunicipalities(muniData);
@@ -201,6 +210,29 @@ export function Leaderboard({ config }: LeaderboardProps) {
             toast({ title: "Sync Failed", description: err.message, variant: "destructive" });
         } finally {
             setIsSyncing(false);
+        }
+    };
+
+    // NEW handler for the full sync
+    const handleSyncAll = async () => {
+        if (!config.apiKey) return;
+        setIsConfirmModalOpen(false);
+        setIsSyncingAll(true);
+        setError(null);
+        try {
+            toast({ title: "Full Sync Started", description: "Clearing ALL data and fetching ALL score sets. This will take significant time and API calls." });
+            const result = await syncAllLeaderboards(config);
+            toast({ title: "Full Sync Complete", description: `Synchronized ${result.syncedCount} applications across all score sets.` });
+            setLastSyncTime(new Date().toISOString());
+
+            const muniData = await getMunicipalities();
+            setMunicipalities(muniData);
+            setPagination(p => ({ ...p, currentPage: 1 }));
+        } catch (err: any) {
+            setError(err.message || "Full synchronization failed.");
+            toast({ title: "Full Sync Failed", description: err.message, variant: "destructive" });
+        } finally {
+            setIsSyncingAll(false);
         }
     };
 
@@ -239,13 +271,43 @@ export function Leaderboard({ config }: LeaderboardProps) {
                         <CardDescription>Analyze and manage applications synchronized from GoodGrants.</CardDescription>
                     </div>
                     <div className="flex items-center gap-2 mt-4 md:mt-0 flex-wrap">
-                        <GenerateReportButton filteredApps={filteredApps} municipalityFilter={debouncedMunicipalityFilter} lastSyncTime={lastSyncTime} scoreSetName={currentScoreSetName} minScore={debouncedMinScore} maxScore={debouncedMaxScore} disabled={isSyncing || isAnalyticsLoading} />
-                        <Button onClick={handleSync} disabled={isSyncing || !selectedScoreSet}><RefreshCw className="mr-2 h-4 w-4" /> Sync</Button>
+                        <GenerateReportButton filteredApps={filteredApps} municipalityFilter={debouncedMunicipalityFilter} lastSyncTime={lastSyncTime} scoreSetName={currentScoreSetName} minScore={debouncedMinScore} maxScore={debouncedMaxScore} disabled={isAnySyncing || isAnalyticsLoading} />
+
+                        {/* Sync All Button and Modal */}
+                        <AlertDialog open={isConfirmModalOpen} onOpenChange={setIsConfirmModalOpen}>
+                            <AlertDialogTrigger asChild>
+                                <Button variant="destructive" disabled={isAnySyncing}>
+                                    <RefreshCw className="mr-2 h-4 w-4" /> Sync All
+                                </Button>
+                            </AlertDialogTrigger>
+                            <AlertDialogContent>
+                                <AlertDialogHeader>
+                                    <AlertDialogTitle>Are you absolutely sure?</AlertDialogTitle>
+                                    <AlertDialogDescription>
+                                        This action will **truncate the entire leaderboard_entries table** in your database and then initiate a sync for **all** available score sets from the API. This process is resource-intensive and will take a significant amount of time.
+                                    </AlertDialogDescription>
+                                </AlertDialogHeader>
+                                <AlertDialogFooter>
+                                    <AlertDialogCancel disabled={isAnySyncing}>Cancel</AlertDialogCancel>
+                                    <AlertDialogAction onClick={handleSyncAll} disabled={isAnySyncing}>
+                                        {isSyncingAll ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <RefreshCw className="mr-2 h-4 w-4" />}
+                                        {isSyncingAll ? 'Syncing All...' : 'Confirm Full Sync'}
+                                    </AlertDialogAction>
+                                </AlertDialogFooter>
+                            </AlertDialogContent>
+                        </AlertDialog>
+
+                        {/* Original Sync Button */}
+                        <Button onClick={handleSync} disabled={isAnySyncing || !selectedScoreSet}>
+                            {isSyncing ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <RefreshCw className="mr-2 h-4 w-4" />}
+                            {isSyncing ? 'Syncing Current...' : 'Sync Current'}
+                        </Button>
+
                         <Select value={selectedScoreSet} onValueChange={(slug) => {
                             const set = scoreSets.find(s => s.slug === slug);
                             if (set) setCurrentScoreSetName(set.name.en_GB);
                             setSelectedScoreSet(slug);
-                        }} disabled={isLoadingSets || isSyncing}>
+                        }} disabled={isLoadingSets || isAnySyncing}>
                             <SelectTrigger className="w-[220px]"><SelectValue placeholder="Select score set" /></SelectTrigger>
                             <SelectContent>{scoreSets.map(set => <SelectItem key={set.slug} value={set.slug}>{set.name.en_GB}</SelectItem>)}</SelectContent>
                         </Select>
@@ -261,24 +323,24 @@ export function Leaderboard({ config }: LeaderboardProps) {
                     <TabsContent value="leaderboard">
                         <div ref={tableContainerRef}>
                             <div className="my-4 p-4 border rounded-lg bg-muted/40">
-                               <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5 gap-4">
-                                    <Input placeholder="Search title..." value={titleSearch} onChange={(e) => setTitleSearch(e.target.value)} className="pl-4" disabled={isSyncing} />
-                                    <Select value={municipalityFilter} onValueChange={setMunicipalityFilter} disabled={isSyncing || municipalities.length === 0}>
+                                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5 gap-4">
+                                    <Input placeholder="Search title..." value={titleSearch} onChange={(e) => setTitleSearch(e.target.value)} className="pl-4" disabled={isAnySyncing} />
+                                    <Select value={municipalityFilter} onValueChange={setMunicipalityFilter} disabled={isAnySyncing || municipalities.length === 0}>
                                         <SelectTrigger><SelectValue placeholder="Filter Municipality" /></SelectTrigger>
                                         <SelectContent><SelectItem value="all">All Municipalities</SelectItem>{cleanMunicipalities.map(muni => <SelectItem key={muni} value={muni}>{muni}</SelectItem>)}</SelectContent>
                                     </Select>
-                                    <Input type="number" placeholder="Min Score" value={minScore} onChange={(e) => setMinScore(e.target.value)} disabled={isSyncing} />
-                                    <Input type="number" placeholder="Max Score" value={maxScore} onChange={(e) => setMaxScore(e.target.value)} disabled={isSyncing} />
+                                    <Input type="number" placeholder="Min Score" value={minScore} onChange={(e) => setMinScore(e.target.value)} disabled={isAnySyncing} />
+                                    <Input type="number" placeholder="Max Score" value={maxScore} onChange={(e) => setMaxScore(e.target.value)} disabled={isAnySyncing} />
                                 </div>
                             </div>
                             <div className="my-4 flex justify-between items-center">
                                 <div className="text-sm text-muted-foreground">{pagination.total} applications found.</div>
-                                {selectedSlugs.length > 0 && (<Button onClick={handleTagSelected} disabled={isTagging || isSyncing}><Tag className="mr-2 h-4 w-4" /> Tag {selectedSlugs.length} as Eligible</Button>)}
+                                {selectedSlugs.length > 0 && (<Button onClick={handleTagSelected} disabled={isTagging || isAnySyncing}><Tag className="mr-2 h-4 w-4" /> Tag {selectedSlugs.length} as Eligible</Button>)}
                             </div>
                             <div className="rounded-md border overflow-x-auto">
                                 <Table className="min-w-[1200px]">
                                     <TableHeader><TableRow>
-                                        <TableHead className="w-12"><Checkbox checked={selectedSlugs.length > 0 && eligibleRows.length > 0 && selectedSlugs.length === eligibleRows.length} onCheckedChange={handleSelectAll} disabled={eligibleRows.length === 0 || isSyncing} /></TableHead>
+                                        <TableHead className="w-12"><Checkbox checked={selectedSlugs.length > 0 && eligibleRows.length > 0 && selectedSlugs.length === eligibleRows.length} onCheckedChange={handleSelectAll} disabled={eligibleRows.length === 0 || isAnySyncing} /></TableHead>
                                         <TableHead className="w-16">Rank</TableHead>
                                         <TableHead className="cursor-pointer w-[30%]" onClick={() => handleSort('title')}>Application Title & Tags {renderSortArrow('title')}</TableHead>
                                         {showMunicipalityColumn && (<TableHead className="w-[150px] border-l">Municipality</TableHead>)}
@@ -287,24 +349,24 @@ export function Leaderboard({ config }: LeaderboardProps) {
                                         <TableHead className="w-16 text-center">Actions</TableHead>
                                     </TableRow></TableHeader>
                                     <TableBody>
-                                        {isLoading || isSyncing ? Array.from({ length: 10 }).map((_, i) => <SkeletonRow key={i} />)
-                                        : error ? <TableRow><TableCell colSpan={totalColumns} className="h-24 text-center text-red-500"><AlertCircle className="mx-auto h-6 w-6 mb-2" />{error}</TableCell></TableRow>
-                                        : leaderboard.length > 0 ? leaderboard.map((entry, index) => {
-                                            const rank = (pagination.currentPage - 1) * pagination.perPage + index + 1;
-                                            return (<TableRow key={entry.slug}>
-                                                <TableCell>{isEligibleForTagging(entry) && <Checkbox checked={selectedSlugs.includes(entry.slug)} onCheckedChange={(c) => handleSelectRow(entry.slug, !!c)} />}</TableCell>
-                                                <TableCell className="font-bold text-lg">{rank}</TableCell>
-                                                <TableCell><div>{entry.title}</div><div className="flex flex-wrap gap-1 mt-2">{entry.tags.map(tag => <Badge key={tag} variant="secondary">{tag}</Badge>)}</div></TableCell>
-                                                {showMunicipalityColumn && <TableCell className="border-l text-sm"><Badge variant="outline">{entry.municipality || 'N/A'}</Badge></TableCell>}
-                                                {uniqueCriteria.map(critName => {
-                                                    const scoreEntry = entry.scoreBreakdown?.find(c => c.name === critName);
-                                                    return (<TableCell key={critName} className={`text-center font-mono text-sm border-l ${getScoreColorClass(scoreEntry?.rawValue || 0, scoreEntry?.maxScore || 2)}`}>{renderScore(scoreEntry)}</TableCell>);
-                                                })}
-                                                <TableCell className="text-center border-l"><TooltipProvider><Tooltip><TooltipTrigger asChild><span className="cursor-help font-semibold text-lg text-green-600">{entry.totalScore.toFixed(2)}</span></TooltipTrigger><TooltipContent><p className="font-bold">Breakdown:</p>{entry.scoreBreakdown.map(c => <div key={c.name}>{c.name}: <span className="font-mono">{renderScore(c)}</span></div>)}</TooltipContent></Tooltip></TooltipProvider></TableCell>
-                                                <TableCell className="text-center"><Button variant="ghost" size="icon" onClick={() => handleViewDetails(entry.slug)}><Eye className="h-4 w-4" /></Button></TableCell>
-                                            </TableRow>);
-                                        })
-                                        : <TableRow><TableCell colSpan={totalColumns} className="h-24 text-center">No results found for the current filters.</TableCell></TableRow>}
+                                        {isLoading || isAnySyncing ? Array.from({ length: 10 }).map((_, i) => <SkeletonRow key={i} />)
+                                            : error ? <TableRow><TableCell colSpan={totalColumns} className="h-24 text-center text-red-500"><AlertCircle className="mx-auto h-6 w-6 mb-2" />{error}</TableCell></TableRow>
+                                                : leaderboard.length > 0 ? leaderboard.map((entry, index) => {
+                                                    const rank = (pagination.currentPage - 1) * pagination.perPage + index + 1;
+                                                    return (<TableRow key={entry.slug}>
+                                                        <TableCell>{isEligibleForTagging(entry) && <Checkbox checked={selectedSlugs.includes(entry.slug)} onCheckedChange={(c) => handleSelectRow(entry.slug, !!c)} />}</TableCell>
+                                                        <TableCell className="font-bold text-lg">{rank}</TableCell>
+                                                        <TableCell><div>{entry.title}</div><div className="flex flex-wrap gap-1 mt-2">{entry.tags.map(tag => <Badge key={tag} variant="secondary">{tag}</Badge>)}</div></TableCell>
+                                                        {showMunicipalityColumn && <TableCell className="border-l text-sm"><Badge variant="outline">{entry.municipality || 'N/A'}</Badge></TableCell>}
+                                                        {uniqueCriteria.map(critName => {
+                                                            const scoreEntry = entry.scoreBreakdown?.find(c => c.name === critName);
+                                                            return (<TableCell key={critName} className={`text-center font-mono text-sm border-l ${getScoreColorClass(scoreEntry?.rawValue || 0, scoreEntry?.maxScore || 2)}`}>{renderScore(scoreEntry)}</TableCell>);
+                                                        })}
+                                                        <TableCell className="text-center border-l"><TooltipProvider><Tooltip><TooltipTrigger asChild><span className="cursor-help font-semibold text-lg text-green-600">{entry.totalScore.toFixed(2)}</span></TooltipTrigger><TooltipContent><p className="font-bold">Breakdown:</p>{entry.scoreBreakdown.map(c => <div key={c.name}>{c.name}: <span className="font-mono">{renderScore(c)}</span></div>)}</TooltipContent></Tooltip></TooltipProvider></TableCell>
+                                                        <TableCell className="text-center"><Button variant="ghost" size="icon" onClick={() => handleViewDetails(entry.slug)}><Eye className="h-4 w-4" /></Button></TableCell>
+                                                    </TableRow>);
+                                                })
+                                                    : <TableRow><TableCell colSpan={totalColumns} className="h-24 text-center">No results found for the current filters.</TableCell></TableRow>}
                                     </TableBody>
                                 </Table>
                             </div>
@@ -321,14 +383,14 @@ export function Leaderboard({ config }: LeaderboardProps) {
                     </TabsContent>
                     <TabsContent value="analytics">
                         <div className="my-4 p-4 border rounded-lg bg-muted/40">
-                             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-2 xl:grid-cols-4 gap-4">
-                                <Input placeholder="Search title..." value={titleSearch} onChange={(e) => setTitleSearch(e.target.value)} className="pl-4" disabled={isSyncing} />
-                                <Select value={municipalityFilter} onValueChange={setMunicipalityFilter} disabled={isSyncing || municipalities.length === 0}>
+                            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-2 xl:grid-cols-4 gap-4">
+                                <Input placeholder="Search title..." value={titleSearch} onChange={(e) => setTitleSearch(e.target.value)} className="pl-4" disabled={isAnySyncing} />
+                                <Select value={municipalityFilter} onValueChange={setMunicipalityFilter} disabled={isAnySyncing || municipalities.length === 0}>
                                     <SelectTrigger><SelectValue placeholder="Filter Municipality" /></SelectTrigger>
                                     <SelectContent><SelectItem value="all">All Municipalities</SelectItem>{cleanMunicipalities.map(muni => <SelectItem key={muni} value={muni}>{muni}</SelectItem>)}</SelectContent>
                                 </Select>
-                                <Input type="number" placeholder="Min Score" value={minScore} onChange={(e) => setMinScore(e.target.value)} disabled={isSyncing} />
-                                <Input type="number" placeholder="Max Score" value={maxScore} onChange={(e) => setMaxScore(e.target.value)} disabled={isSyncing} />
+                                <Input type="number" placeholder="Min Score" value={minScore} onChange={(e) => setMinScore(e.target.value)} disabled={isAnySyncing} />
+                                <Input type="number" placeholder="Max Score" value={maxScore} onChange={(e) => setMaxScore(e.target.value)} disabled={isAnySyncing} />
                             </div>
                         </div>
                         <ScoreAnalyticsCard leaderboard={filteredApps as unknown as AnalyticsLeaderboardEntry[]} municipalityFilter={debouncedMunicipalityFilter} isLoading={isAnalyticsLoading} scoreSetName={currentScoreSetName} filteredApps={filteredApps} />
@@ -339,4 +401,3 @@ export function Leaderboard({ config }: LeaderboardProps) {
         </Card>
     );
 }
-

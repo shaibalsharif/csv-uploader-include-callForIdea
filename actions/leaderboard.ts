@@ -4,8 +4,8 @@ import { sql } from "@vercel/postgres";
 import { getApplicationDetailsFromDB } from "./analysis";
 
 // --- Custom Score Calculation Constants ---
-const TECHNICAL_SLUGS = ["JljrBVpd"];
-const JURY_SLUGS = ["nmWNmZPb"];
+const TECHNICAL_SLUGS = ["nmWNmZPb"];
+const JURY_SLUGS = ["JljrBVpd"];
 
 const WEIGHT_MAP: { [key: string]: number } = {
     'Digital Transformation': 0.15,
@@ -137,9 +137,7 @@ async function syncMunicipalityMapping(entries: any[]) {
 
 /**
  * Calculates the weighted score for Technical or Jury Evaluation.
- * This function applies the base weights to all scores it receives.
- * The exclusion of the 'Digital Transformation' score for Non-Digital ideas
- * is handled by the Goodgrants API omitting that score in the response.
+ * This function applies the base weights to all scores it receives, then normalizes.
  * @param criteria Array of criteria scores for the evaluation set.
  * @returns The calculated weighted score.
  */
@@ -157,7 +155,6 @@ const calculateWeightedScore = (criteria: any[]): number => {
       continue;
     }
 
-    // Skip criteria with no numeric score (e.g., N/A in GoodGrants)
     const scoreValue = Number(criterion.value);
     if (isNaN(scoreValue)) continue;
 
@@ -167,7 +164,7 @@ const calculateWeightedScore = (criteria: any[]): number => {
 
   if (totalUsedWeight === 0) return 0;
 
-  // --- Normalize so total weight = 1.0 (GoodGrants style) ---
+  // Normalize the score (weighted sum / total used weight)
   const normalizedScore = weightedSum / totalUsedWeight;
 
   return safeRound(normalizedScore, 2);
@@ -176,27 +173,16 @@ const calculateWeightedScore = (criteria: any[]): number => {
 
 /**
  * Calculates the correct total score for a single score set based on its type.
- * Note: This function replaces the old logic and assumes the calculation
- * is for the *specific score set* being synced.
  */
 const calculateCustomTotalScore = (entry: any, scoreSetSlug: string): number => {
-    // NOTE: Application category is assumed to be available on the entry object for the check.
     const criteria = entry.scores?.criteria || [];
-    // The Digital/Non-Digital check is implicitly handled by the API's omission of the score
-    // but the original logic implies checking the category. We no longer need the category
-    // check here because the simple `calculateWeightedScore` handles both cases:
-    // 6 criteria received (Digital) -> weights sum to 1.0 -> correct weighted average.
-    // 5 criteria received (Non-Digital) -> weights sum to 0.85 -> correct weighted sum (not normalized).
 
     if (TECHNICAL_SLUGS.includes(scoreSetSlug) || JURY_SLUGS.includes(scoreSetSlug)) {
-        // Technical or Jury Evaluation: Weighted Sum
-        // This handles the digital/non-digital rules by using the provided criteria list
+        // Technical or Jury Evaluation: Weighted Average (with normalization for 5/6 criteria)
         return calculateWeightedScore(criteria);
     } else {
         // Eligibility Shortlisting: Simple Sum of individual criteria scores
-        // This fulfills step 2: "Eligibility shortlisting will be scored in total score by summing the individual criteria scores."
         const total = criteria.reduce((sum: number, criterion: any) => {
-            // Use the numeric value for summation
             return sum + (Number(criterion.value) || 0);
         }, 0);
         return safeRound(total, 2);
@@ -277,43 +263,24 @@ async function upsertLeaderboardEntries(entries: LeaderboardEntry[]) {
   await sql.query(query, values);
 }
 
-// --- Public Actions (API Call) ---
-
-export async function getScoreSets(config: {
-  apiKey: string;
-}): Promise<{ slug: string; name: { en_GB: string } }[]> {
-  const response = await apiRequest(`/score-set`, config.apiKey);
-  return response.data;
-}
-
-export async function getMunicipalities() {
-  try {
-    const { rows } = await sql`
-            SELECT DISTINCT municipality 
-            FROM app_municipality_map 
-            WHERE municipality IS NOT NULL AND municipality != ''
-            ORDER BY municipality ASC;
-        `;
-    return rows.map((row) => row.municipality);
-  } catch (error) {
-    console.error("Error fetching municipalities:", error);
-    return [];
-  }
-}
+// --- Core Sync Logic Refactored ---
 
 /**
- * Syncs ALL leaderboard entries for a given score set from the API to the local DB.
+ * Core logic to fetch and upsert a single score set.
  */
-export async function syncLeaderboard(
+async function syncLeaderboardCore(
   config: { apiKey: string },
-  scoreSetSlug: string
+  scoreSetSlug: string,
+  runCleanup: boolean
 ) {
   if (!config.apiKey) throw new Error("API Key not configured.");
   if (!scoreSetSlug) throw new Error("Score set slug is required for sync.");
 
-  // Step 1: Delete existing data for this score set to ensure a clean sync
-  // NOTE: If you truncate the table manually before running, this line is less critical but good for safety.
-  await sql`DELETE FROM leaderboard_entries WHERE score_set_slug = ${scoreSetSlug}`;
+  // Step 1: Cleanup (only run if not part of a full sync/truncate)
+  if (runCleanup) {
+    console.log(`Action: Clearing existing data for ${scoreSetSlug}...`);
+    await sql`DELETE FROM leaderboard_entries WHERE score_set_slug = ${scoreSetSlug}`;
+  }
 
   let currentPage = 1;
   let hasMorePages = true;
@@ -355,6 +322,76 @@ export async function syncLeaderboard(
   await syncMunicipalityMapping(allEntries);
 
   return { success: true, syncedCount: totalSynced };
+}
+
+
+// --- Public Actions (API Call) ---
+
+export async function getScoreSets(config: {
+  apiKey: string;
+}): Promise<{ slug: string; name: { en_GB: string } }[]> {
+  const response = await apiRequest(`/score-set`, config.apiKey);
+  return response.data;
+}
+
+export async function getMunicipalities() {
+  try {
+    const { rows } = await sql`
+            SELECT DISTINCT municipality 
+            FROM app_municipality_map 
+            WHERE municipality IS NOT NULL AND municipality != ''
+            ORDER BY municipality ASC;
+        `;
+    return rows.map((row) => row.municipality);
+  } catch (error) {
+    console.error("Error fetching municipalities:", error);
+    return [];
+  }
+}
+
+/**
+ * Syncs ALL leaderboard entries for a given score set from the API to the local DB.
+ * (Original sync functionality, performs cleanup/delete for the specific set).
+ */
+export async function syncLeaderboard(
+  config: { apiKey: string },
+  scoreSetSlug: string
+) {
+    console.log(`--- Single Leaderboard Sync Started for ${scoreSetSlug} ---`);
+    const result = await syncLeaderboardCore(config, scoreSetSlug, true); // Run cleanup
+    console.log(`--- Single Sync Complete. Synced ${result.syncedCount} applications. ---`);
+    return result;
+}
+
+/**
+ * Clears the entire leaderboard_entries table and syncs all available score sets.
+ */
+export async function syncAllLeaderboards(config: { apiKey: string }) {
+    if (!config.apiKey) throw new Error("API Key not configured.");
+    
+    console.log("--- Full Leaderboard Sync Started ---");
+    
+    // 1. Truncate the table
+    console.log("Action: Truncating leaderboard_entries table...");
+    await sql`TRUNCATE TABLE leaderboard_entries`;
+
+    // 2. Get all score sets
+    console.log("Action: Fetching all score sets...");
+    const scoreSets = await getScoreSets(config);
+    let totalSynced = 0;
+    
+    // 3. Sync each score set sequentially
+    for (const set of scoreSets) {
+        console.log(`Sub-sync: Starting sync for score set: ${set.name.en_GB} (${set.slug})`);
+        
+        // We pass false for runCleanup because the table was already truncated
+        const result = await syncLeaderboardCore(config, set.slug, false); 
+        totalSynced += result.syncedCount;
+        console.log(`Sub-sync: Finished sync for ${set.name.en_GB}. Synced ${result.syncedCount} applications.`);
+    }
+
+    console.log(`--- Full Leaderboard Sync Complete. Total applications synced: ${totalSynced}. ---`);
+    return { success: true, syncedCount: totalSynced };
 }
 
 // --- Public Actions (Local DB Query) ---

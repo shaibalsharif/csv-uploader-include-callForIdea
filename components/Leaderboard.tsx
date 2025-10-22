@@ -10,7 +10,7 @@ import { Skeleton } from "./ui/skeleton";
 import { Input } from "./ui/input";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "./ui/tooltip";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "./ui/tabs";
-import { RefreshCw, Trophy, AlertCircle, ChevronLeft, ChevronRight, ArrowUpDown, Tag, Search, Eye, MapPin, Loader2, Download, ScrollText } from 'lucide-react';
+import { RefreshCw, Trophy, AlertCircle, ChevronLeft, ChevronRight, ArrowUpDown, Tag, Search, Eye, MapPin, Loader2, Download, ScrollText, ChevronsLeft, ChevronsRight } from 'lucide-react';
 import { getLeaderboardPage, getScoreSets, syncLeaderboard, syncAllLeaderboards, getMunicipalities, getChallengeStatements, LeaderboardEntry, ScoreBreakdown, AnalyticsLeaderboardEntry, getAllLeaderboardDataForAnalytics } from '../actions/leaderboard';
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from './ui/alert-dialog';
 import type { AppRawData } from '../actions/analysis';
@@ -50,8 +50,8 @@ function useDebounce<T>(value: T, delay: number): T {
     return debouncedValue;
 }
 
-const TECHNICAL_SLUG = 'nmWNmZPb';
-const JURY_SLUG = 'JljrBVpd';
+const TECHNICAL_SLUG = "nmWNmZPb";
+const JURY_SLUG = "JljrBVpd";
 const ELIGIBILITY_SLUG = "Gnmrzagy"; // Assuming the eligibility slug based on the console log
 const ALL_STATEMENTS_VALUE = '__all__'; // Safe placeholder for "All Statements" in Select
 
@@ -77,6 +77,103 @@ const getScoreColorClass = (rawValue: number, maxScore: number): string => {
 interface LeaderboardProps {
     config: { apiKey: string };
 }
+
+// --- NEW Pagination Component ---
+interface PaginationProps {
+    currentPage: number;
+    lastPage: number;
+    total: number;
+    perPage: number;
+    changePage: (newPage: number) => void;
+    setPerPage: (perPage: number) => void;
+    disabled: boolean;
+}
+
+const PaginationControls: React.FC<PaginationProps> = ({
+    currentPage,
+    lastPage,
+    total,
+    perPage,
+    changePage,
+    setPerPage,
+    disabled
+}) => {
+    const pageNumbers = useMemo(() => {
+        const delta = 2; // Show 2 pages on each side of the current page
+        const range: (number | string)[] = []; // FIX: Explicitly type range
+
+        for (let i = Math.max(2, currentPage - delta); i <= Math.min(lastPage - 1, currentPage + delta); i++) {
+            range.push(i);
+        }
+
+        if (currentPage - delta > 2) {
+            range.unshift('...');
+        }
+        if (currentPage + delta < lastPage - 1) {
+            range.push('...');
+        }
+
+        if (lastPage > 1) {
+            if (!range.includes(1)) range.unshift(1);
+            if (!range.includes(lastPage)) range.push(lastPage);
+        }
+
+        return range.filter((p, i) => p !== '...' || range[i - 1] !== '...');
+    }, [currentPage, lastPage]);
+
+    return (
+        <div className="flex items-center justify-between space-x-2 py-4 flex-wrap">
+            <div className="flex items-center space-x-2">
+                <Select value={perPage.toString()} onValueChange={(v) => setPerPage(Number(v))} disabled={disabled}>
+                    <SelectTrigger className="w-[120px]"><SelectValue /></SelectTrigger>
+                    <SelectContent>
+                        <SelectItem value="10">10/page</SelectItem>
+                        <SelectItem value="20">20/page</SelectItem>
+                        <SelectItem value="50">50/page</SelectItem>
+                        <SelectItem value="100">100/page</SelectItem>
+                    </SelectContent>
+                </Select>
+                <span className="text-sm text-muted-foreground">
+                    Page {currentPage} of {lastPage} ({total} Total)
+                </span>
+            </div>
+
+            <div className="flex items-center space-x-1">
+                <Button variant="outline" size="icon" onClick={() => changePage(1)} disabled={currentPage <= 1 || disabled}>
+                    <ChevronsLeft className="h-4 w-4" />
+                </Button>
+                <Button variant="outline" size="icon" onClick={() => changePage(currentPage - 1)} disabled={currentPage <= 1 || disabled}>
+                    <ChevronLeft className="h-4 w-4" />
+                </Button>
+
+                {pageNumbers.map((page, index) => (
+                    typeof page === 'number' ? (
+                        <Button
+                            key={index}
+                            variant={page === currentPage ? "default" : "outline"}
+                            size="icon"
+                            onClick={() => changePage(page)}
+                            disabled={disabled}
+                        >
+                            {page}
+                        </Button>
+                    ) : (
+                        <span key={index} className="px-2 text-muted-foreground">...</span>
+                    )
+                ))}
+
+                <Button variant="outline" size="icon" onClick={() => changePage(currentPage + 1)} disabled={currentPage >= lastPage || disabled}>
+                    <ChevronRight className="h-4 w-4" />
+                </Button>
+                <Button variant="outline" size="icon" onClick={() => changePage(lastPage)} disabled={currentPage >= lastPage || disabled}>
+                    <ChevronsRight className="h-4 w-4" />
+                </Button>
+            </div>
+        </div>
+    );
+};
+// --- END NEW Pagination Component ---
+
 
 export function Leaderboard({ config }: LeaderboardProps) {
     const [leaderboard, setLeaderboard] = useState<LeaderboardEntry[]>([]);
@@ -122,11 +219,15 @@ export function Leaderboard({ config }: LeaderboardProps) {
     // CHANGED: challengeStatementFilter is now a string array for multi-select
     const [challengeStatementFilter, setChallengeStatementFilter] = useState<string[]>([]);
     const debouncedChallengeStatementString = useDebounce(challengeStatementFilter.join(','), 500);
+
+    // FIX: Define renderScore here, as it's used in the table body.
     const renderScore = (scoreEntry: ScoreBreakdown | undefined): string => {
         if (!scoreEntry) return 'N/A';
-        if (scoreEntry.score.includes('/')) return scoreEntry.score;
+        // Assuming ScoreBreakdown.score might be a formatted string (e.g., "3/5") or we format rawValue
+        if (scoreEntry.score && scoreEntry.score.includes('/')) return scoreEntry.score;
         return scoreEntry.rawValue.toFixed(2);
     };
+
     const isChallengeFilterApplicable = useMemo(() => {
         return selectedScoreSet === TECHNICAL_SLUG || selectedScoreSet === JURY_SLUG;
     }, [selectedScoreSet]);
@@ -137,7 +238,9 @@ export function Leaderboard({ config }: LeaderboardProps) {
         const parsedMax = debouncedMaxScore ? parseFloat(debouncedMaxScore) : undefined;
         return parsedMin !== undefined || parsedMax !== undefined;
     }, [debouncedMinScore, debouncedMaxScore]);
+
     const isAnySyncing = isSyncing || isSyncingAll;
+
     // FETCH MUNICIPALITY AND PS CODES
     useEffect(() => {
         const fetchMuniAndPsCodes = async () => {
@@ -158,8 +261,6 @@ export function Leaderboard({ config }: LeaderboardProps) {
             setIsLoadingSets(true);
             try {
                 const [sets, muniData] = await Promise.all([getScoreSets(config), getMunicipalities()]);
-                console.log(sets);
-
                 setScoreSets(sets);
                 setMunicipalities(muniData);
                 if (sets.length > 0) {
@@ -248,7 +349,15 @@ export function Leaderboard({ config }: LeaderboardProps) {
 
     useEffect(() => { fetchLeaderboard(); }, [pagination.currentPage]);
 
+    const handlePageChange = (newPage: number) => {
+        if (newPage > 0 && newPage <= pagination.lastPage) {
+            setPagination(prev => ({ ...prev, currentPage: newPage }));
+        }
+    };
 
+    const handlePerPageChange = (newPerPage: number) => {
+        setPagination(prev => ({ ...prev, perPage: newPerPage, currentPage: 1 }));
+    };
 
     const handleSync = async () => {
         if (!config.apiKey || !selectedScoreSet) return;
@@ -295,7 +404,6 @@ export function Leaderboard({ config }: LeaderboardProps) {
     const handleViewDetails = (slug: string) => { setSelectedAppSlug(slug); setIsModalOpen(true); };
     const handleSort = (key: SortableKeys) => { setSortConfig(prev => ({ key, direction: prev.key === key && prev.direction === 'asc' ? 'desc' : 'asc' })); };
     const renderSortArrow = (column: SortableKeys) => (sortConfig.key !== column ? <ArrowUpDown className="ml-2 h-4 w-4 text-muted-foreground/50" /> : sortConfig.direction === 'asc' ? '▲' : '▼');
-    const changePage = (newPage: number) => { if (newPage > 0 && newPage <= pagination.lastPage) setPagination(prev => ({ ...prev, currentPage: newPage })); };
     const isEligibleForTagging = (entry: LeaderboardEntry) => !entry.tags?.includes('Eligible-1');
     const eligibleRows = useMemo(() => leaderboard.filter(isEligibleForTagging), [leaderboard]);
     const handleSelectRow = (slug: string, checked: boolean) => setSelectedSlugs(prev => checked ? [...prev, slug] : prev.filter(s => s !== slug));
@@ -316,6 +424,7 @@ export function Leaderboard({ config }: LeaderboardProps) {
 
     const cleanMunicipalities = municipalities.filter(muni => muni && muni.trim() !== "");
     const showMunicipalityColumn = debouncedMunicipalityFilter === 'all';
+    // Removed uniqueCriteria columns. Total columns is fixed based on new layout.
     const totalColumns = 6;
 
     // UI Logic for Challenge Selects
@@ -426,7 +535,7 @@ export function Leaderboard({ config }: LeaderboardProps) {
                                 {isChallengeFilterApplicable && availableChallengeStatements.length > 0 && (
                                     <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5 gap-4">
                                         {isMultiSelect ? (
-                                            <div className="flex flex-col space-y-1 xl:col-span-full">
+                                            <div className="flex flex-col space-y-1 xl:col-span-2">
                                                 <label className="text-sm font-medium leading-none">Challenge Statements (Multi-select)</label>
                                                 <div className="flex flex-wrap gap-2 p-2 border rounded-md bg-white overflow-y-auto max-h-32">
                                                     <Button
@@ -454,13 +563,12 @@ export function Leaderboard({ config }: LeaderboardProps) {
                                             </div>
                                         ) : (
                                             <Select
-                                                value={singlePsValue} // Use safe singlePsValue
+                                                value={singlePsValue}
                                                 onValueChange={handleSingleSelectChange}
                                                 disabled={isAnySyncing || availableChallengeStatements.length === 0}
                                             >
                                                 <SelectTrigger><SelectValue placeholder="Filter Challenge Statement (Single)" /></SelectTrigger>
                                                 <SelectContent>
-                                                    {/* FIX: Use safe placeholder value */}
                                                     <SelectItem value={ALL_STATEMENTS_VALUE}>All Statements</SelectItem>
                                                     {availableChallengeStatements.map(cs => (
                                                         <SelectItem key={cs.tag} value={cs.tag}>{cs.name}</SelectItem>
@@ -474,10 +582,18 @@ export function Leaderboard({ config }: LeaderboardProps) {
                                     </div>
                                 )}
                             </div>
-                            <div className="my-4 flex justify-between items-center">
-                                <div className="text-sm text-muted-foreground">{pagination.total} applications found.</div>
-                                {selectedSlugs.length > 0 && (<Button onClick={handleTagSelected} disabled={isTagging || isAnySyncing}><Tag className="mr-2 h-4 w-4" /> Tag {selectedSlugs.length} as Eligible</Button>)}
-                            </div>
+
+                            {/* NEW: Pagination Controls ABOVE the table */}
+                            <PaginationControls
+                                currentPage={pagination.currentPage}
+                                lastPage={pagination.lastPage}
+                                total={pagination.total}
+                                perPage={pagination.perPage}
+                                changePage={handlePageChange}
+                                setPerPage={handlePerPageChange}
+                                disabled={isLoading || isAnySyncing}
+                            />
+
                             <div className="rounded-md border overflow-x-auto">
                                 <Table className="min-w-[700px]">
                                     <TableHeader><TableRow>
@@ -497,9 +613,7 @@ export function Leaderboard({ config }: LeaderboardProps) {
                                                 : leaderboard.length > 0 ? leaderboard.map((entry, index) => {
                                                     const rank = (pagination.currentPage - 1) * pagination.perPage + index + 1;
 
-                                                    // Get the PS code from the entry's tags (since we rely on DB population for m.ps_code, 
-                                                    // we cannot rely on it being in the main entry object directly here unless the DB query returned it)
-                                                    // For display, we use the first tag that matches an available challenge statement as a fallback.
+                                                    // Get the PS code from the entry's tags
                                                     const psCodeDisplay = entry.tags.find(t => availableChallengeStatements.some(cs => cs.tag === t)) || 'N/A';
 
                                                     return (<TableRow key={entry.slug}>
@@ -544,15 +658,17 @@ export function Leaderboard({ config }: LeaderboardProps) {
                                     </TableBody>
                                 </Table>
                             </div>
-                            <div className="flex items-center justify-end space-x-2 py-4">
-                                <Select value={pagination.perPage.toString()} onValueChange={(v) => setPagination(p => ({ ...p, perPage: Number(v), currentPage: 1 }))}>
-                                    <SelectTrigger className="w-[120px]"><SelectValue /></SelectTrigger>
-                                    <SelectContent><SelectItem value="10">10/page</SelectItem><SelectItem value="20">20/page</SelectItem><SelectItem value="50">50/page</SelectItem><SelectItem value="100">100/page</SelectItem></SelectContent>
-                                </Select>
-                                <span className="text-sm text-muted-foreground">Page {pagination.currentPage} of {pagination.lastPage}</span>
-                                <Button variant="outline" size="sm" onClick={() => changePage(pagination.currentPage - 1)} disabled={pagination.currentPage <= 1}><ChevronLeft className="h-4 w-4" /></Button>
-                                <Button variant="outline" size="sm" onClick={() => changePage(pagination.currentPage + 1)} disabled={pagination.currentPage >= pagination.lastPage}><ChevronRight className="h-4 w-4" /></Button>
-                            </div>
+
+                            {/* NEW: Pagination Controls BELOW the table */}
+                            <PaginationControls
+                                currentPage={pagination.currentPage}
+                                lastPage={pagination.lastPage}
+                                total={pagination.total}
+                                perPage={pagination.perPage}
+                                changePage={handlePageChange}
+                                setPerPage={handlePerPageChange}
+                                disabled={isLoading || isAnySyncing}
+                            />
                         </div>
                     </TabsContent>
                     <TabsContent value="analytics">

@@ -1,26 +1,28 @@
-import type { Metadata } from 'next'
-import { GeistSans } from 'geist/font/sans'
-import { GeistMono } from 'geist/font/mono'
-import { Analytics } from '@vercel/analytics/next'
-import './globals.css'
+import './globals.css';
+import { Inter } from 'next/font/google';
+import { ThemeProvider } from '@/components/theme-provider';
+import ResponsiveNav from '@/components/ResponsiveNav';
+import { Toaster } from '@/components/ui/toaster';
 
-export const metadata: Metadata = {
-  title: 'Offline Uploader GoodGrants',
-  description: 'Offline application portla to upload applications to good grants platform',
-  generator: 'Tiller.com.bd',
-}
+const inter = Inter({ subsets: ['latin'] });
 
-export default function RootLayout({
-  children,
-}: Readonly<{
-  children: React.ReactNode
-}>) {
+export const metadata = {
+  title: 'INCLUDE Grant Management',
+  description: 'Application processing and analysis dashboard.',
+};
+
+export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
-    <html lang="en">
-      <body className={`font-sans ${GeistSans.variable} ${GeistMono.variable}`}>
-        {children}
-        <Analytics />
+    <html lang="en" suppressHydrationWarning>
+      <body className={inter.className}>
+        <ThemeProvider attribute="class" defaultTheme="light" enableSystem>
+          <ResponsiveNav />
+          <main className="flex-1 container pt-6 pb-12 px-6 mx-auto">
+            {children}
+          </main>
+          <Toaster />
+        </ThemeProvider>
       </body>
     </html>
-  )
+  );
 }

@@ -21,9 +21,9 @@ import { parseCSV as parseCsvServer } from "@/actions/parse";
 import { createBatchAndApplications } from "@/actions/history";
 
 interface ProcessingDashboardProps {
-  csvFile: File;
-  processingMode: "handsfree" | "interruption";
-  config: {
+  csvFile: File | null; // FIX: Allow null
+  processingMode: "handsfree" | "interruption" | null; // FIX: Allow null
+  config: { // FIX: Updated required config properties
     apiKey: string;
     baseUrl: string;
     formSlug: string;
@@ -169,12 +169,13 @@ export function ProcessingDashboard({ csvFile, processingMode, config, onComplet
   // New state to track the currently processing application for UI feedback
   const [currentlyProcessingId, setCurrentlyProcessingId] = useState<string | null>(null);
 
+  // Ensure file and mode are present to start processing logic
   useEffect(() => {
-    if (csvFile && !hasProcessedRef.current) {
+    if (csvFile && processingMode && !hasProcessedRef.current) {
       hasProcessedRef.current = true;
       parseCSV();
     }
-  }, [csvFile]);
+  }, [csvFile, processingMode]); // Added processingMode to dependencies
 
   const handleApplicationSelect = (application: ApplicationData) => {
     setSelectedApplication(application);
@@ -187,6 +188,8 @@ export function ProcessingDashboard({ csvFile, processingMode, config, onComplet
   };
 
   const parseCSV = async () => {
+    if (!csvFile) return; // Should not happen due to useEffect guard
+
     try {
       addLog("Parsing CSV file using server-side parser...");
       const text = await csvFile.text();
@@ -204,8 +207,10 @@ export function ProcessingDashboard({ csvFile, processingMode, config, onComplet
       }
 
       let detectedMunicipality: string | null = null;
-      if (validData[0] && validData[0]["Municipality - [rDkKljjz]"]) {
-        const municipalityValue = validData[0]["Municipality - [rDkKljjz]"];
+      // Note: Header lookup might need to be more robust if the name changes slightly
+      const muniHeaderKey = Object.keys(validData[0]).find(h => h.includes("Municipality - [rDkKljjz]"));
+      if (muniHeaderKey && validData[0][muniHeaderKey]) {
+        const municipalityValue = validData[0][muniHeaderKey];
         const cleanName = municipalityValue.split(" - [")[0].trim();
         if (Object.keys(municipalityMappings).includes(cleanName)) {
           detectedMunicipality = cleanName;
@@ -242,6 +247,12 @@ export function ProcessingDashboard({ csvFile, processingMode, config, onComplet
       }
       setBatches(batchedApplications);
       addLog(`Divided into ${batchedApplications.length} batches of 20 applications.`);
+      
+      // If mode is 'handsfree' (parse & submit), start processing immediately after municipality confirmation is done/skipped.
+      if (processingMode === 'handsfree' && detectedMunicipality) {
+          setMunicipalityConfirmation({ ...municipalityConfirmation, confirmed: true });
+          startProcessing();
+      }
 
     } catch (error) {
       addLog(`❌ Failed to parse CSV: ${error instanceof Error ? error.message : "Unknown error"}`);
@@ -314,6 +325,9 @@ export function ProcessingDashboard({ csvFile, processingMode, config, onComplet
         let title = "";
         let categorySlug = "";
 
+        // This mapping needs to be dynamically derived from the CSV headers themselves,
+        // but since the original code relies on hardcoded headers that include slugs,
+        // we'll keep the structure but ensure we use the dynamic municipality slug.
         const csvHeaderToApiSlugMapping: { [key: string]: string | null } = {
           "Name of the idea - [title]": "title",
           "Digital/Non-Digital Idea - [Category]": "category_slug",
@@ -329,26 +343,29 @@ export function ProcessingDashboard({ csvFile, processingMode, config, onComplet
           "Ward no. (optional) - [DolgLaOe]": "DolgLaOe",
           "Phone no. - [OLVQXPpn]": "OLVQXPpn",
           "Municipality - [rDkKljjz]": "rDkKljjz",
-          "Challange statement* - [RjAnzBZJ]": "RjAnzBZJ",
+          "Challange statement* - [RjAnzBZJ]": "RjAnzBZJ", // Default PS field slug
           "Description of The Idea - [GqVZgKbW]": "GqVZgKbW",
           "Implementation Roadmap - [kZwoWjrv]": "kZwoWjrv",
           "Do you want to Implement it yourself? - [GgJbpwlm]": "GgJbpwlm",
         };
 
-        const selectedMunicipalitySlug = municipalityMappings[municipalityConfirmation.selected as MunicipalitySlug].fieldSlug;
+        const selectedMunicipalitySlug = municipalityConfirmation.selected ? municipalityMappings[municipalityConfirmation.selected as MunicipalitySlug].fieldSlug : 'RjAnzBZJ';
+        
+        // Dynamically insert the correct PS field header mapping based on selected municipality
         const newCsvHeaderToApiSlugMapping = {
           ...csvHeaderToApiSlugMapping,
+          // Use a placeholder key for the challenge statement mapping that is active
           [`Challange statement* - [${selectedMunicipalitySlug}]`]: selectedMunicipalitySlug
         };
 
         for (const [csvHeader, apiSlug] of Object.entries(newCsvHeaderToApiSlugMapping)) {
           let value = formattedData[csvHeader];
 
-          if (value !== undefined && value !== null && value.trim() !== "") {
+          if (value !== undefined && value !== null && typeof value === 'string' && value.trim() !== "") {
             if (apiSlug === "title") {
               title = value;
             } else if (apiSlug === "category_slug") {
-              categorySlug = getSlugFromFormattedString(value) || "";
+              categorySlug = getSlugFromFormattedString(value) || value; // Use value as fallback if slug extraction fails
             } else if (apiSlug === "OLVQXPpn") {
               const formattedPhoneNumber = formatPhoneNumber(value);
               if (formattedPhoneNumber) {
@@ -371,6 +388,7 @@ export function ProcessingDashboard({ csvFile, processingMode, config, onComplet
           }
         }
 
+        // Submitting with the full config, which now includes all required fields
         const submitResult = await submitApplication(config, title, categorySlug, applicationFields);
         updatedApplications[appIndex] = {
           ...updatedApplications[appIndex],
@@ -412,21 +430,24 @@ export function ProcessingDashboard({ csvFile, processingMode, config, onComplet
         setShowErrorConfirmation(true);
       } else {
         const batchData = {
-          fileName: csvFile.name,
+          fileName: csvFile!.name, // Non-null assertion
           totalApplications: updatedApplications.length,
           completedApplications: completedCount,
           errorApplications: errorCount,
           skippedApplications: skippedCount,
-          processingMode,
+          processingMode: processingMode!, // FIX: Non-null assertion for required type
           originalCsvContent,
-          logs: logs,
+          logs: logs, // Added missing logs property
           configFormSlug: config.formSlug,
           configApplicantSlug: config.applicantSlug,
         };
 
         try {
-          await createBatchAndApplications(batchData, updatedApplications);
-          addLog("Batch history saved to database.");
+          // ensure csvFile is not null before using it
+          if(csvFile) { 
+            await createBatchAndApplications(batchData, updatedApplications);
+            addLog("Batch history saved to database.");
+          }
         } catch (error) {
           addLog(`❌ Failed to save batch history: ${error}`);
         }
@@ -465,6 +486,11 @@ export function ProcessingDashboard({ csvFile, processingMode, config, onComplet
     if (municipalityConfirmation.selected) {
       setMunicipalityConfirmation({ ...municipalityConfirmation, confirmed: true });
       addLog(`Confirmed Municipality: ${municipalityConfirmation.selected}`);
+      
+      // If handsfree mode, start processing right after confirmation
+      if (processingMode === 'handsfree') {
+          startProcessing();
+      }
     }
   };
 
@@ -474,14 +500,14 @@ export function ProcessingDashboard({ csvFile, processingMode, config, onComplet
     const skippedCount = applications.filter(app => app.status === "skipped").length;
 
     const batchData = {
-      fileName: csvFile.name,
+      fileName: csvFile!.name, // Non-null assertion
       totalApplications: applications.length,
       completedApplications: completedCount,
       errorApplications: errorCount,
       skippedApplications: skippedCount,
-      processingMode,
+      processingMode: processingMode!, // FIX: Non-null assertion for required type
       originalCsvContent,
-      logs: logs,
+      logs: logs, // Added missing logs property
       configFormSlug: config.formSlug,
       configApplicantSlug: config.applicantSlug,
     };
@@ -511,14 +537,14 @@ export function ProcessingDashboard({ csvFile, processingMode, config, onComplet
     const skippedCount = applications.filter(app => app.status === "skipped").length + applications.filter(app => app.status === "error").length;
 
     const batchData = {
-      fileName: csvFile.name,
+      fileName: csvFile!.name, // Non-null assertion
       totalApplications: applications.length,
       completedApplications: completedCount,
       errorApplications: 0,
       skippedApplications: skippedCount,
-      processingMode,
+      processingMode: processingMode!, // FIX: Non-null assertion for required type
       originalCsvContent,
-      logs: logs,
+      logs: logs, // Added missing logs property
       configFormSlug: config.formSlug,
       configApplicantSlug: config.applicantSlug,
     };
@@ -565,6 +591,11 @@ export function ProcessingDashboard({ csvFile, processingMode, config, onComplet
   const progress = applications.length > 0 ? (totalProcessed / applications.length) * 100 : 0;
 
   const currentBatch = batches[currentBatchIndex];
+
+  if (!csvFile || !processingMode) {
+    // Return null or a blank state if no file is ready for processing
+    return null;
+  }
 
   return (
     <div className="space-y-6">

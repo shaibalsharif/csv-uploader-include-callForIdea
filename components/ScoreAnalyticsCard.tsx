@@ -15,6 +15,7 @@ interface ScoreAnalyticsCardProps {
     isLoading: boolean;
     scoreSetName: string;
     filteredApps: FilteredAppRawData[];
+    skipScoreDistribution: boolean; // NEW PROP for conditional rendering
 }
 
 type ScoreCategory = 'SCORE_6' | 'GTE_5' | 'GTE_4' | 'LT_4';
@@ -108,7 +109,7 @@ const GenderPieChart = ({ data }: { data: { name: string; value: number }[] }) =
 };
 
 // --- Main Component ---
-export function ScoreAnalyticsCard({ leaderboard, municipalityFilter, isLoading, scoreSetName, filteredApps }: ScoreAnalyticsCardProps) {
+export function ScoreAnalyticsCard({ leaderboard, municipalityFilter, isLoading, scoreSetName, filteredApps, skipScoreDistribution }: ScoreAnalyticsCardProps) {
     const { overallData, genderData, ageData, categoryData, municipalCountData, municipalScoreData, challengeData } = useAnalyticsData(leaderboard, filteredApps);
 
     const refs = {
@@ -134,10 +135,17 @@ export function ScoreAnalyticsCard({ leaderboard, municipalityFilter, isLoading,
                 <CardDescription>Filter: <span className="font-semibold">{municipalityFilter === 'all' ? 'All' : municipalityFilter}</span> | Apps: <span className="font-semibold">{leaderboard.length}</span></CardDescription>
             </CardHeader></Card>
             <div className="grid gap-6 md:grid-cols-2 xl:grid-cols-3">
-                <ChartCard title="Overall Score Distribution" chartRef={refs.overall}><div className="space-y-4 pt-4">{overallData.map(item => (<div key={item.id} className="flex items-center justify-between text-sm">
-                    <div className="flex items-center"><div className="h-3 w-3 rounded-full mr-3" style={{ backgroundColor: COLORS[item.id as ScoreCategory] }} /><span>{item.label}</span></div>
-                    <div className="font-semibold">{item.percentage}%<span className="text-muted-foreground ml-2">({item.value})</span></div>
-                </div>))}</div></ChartCard>
+                
+                {/* 1. Overall Score Distribution (CONDITIONAL RENDERING) */}
+                {!skipScoreDistribution && overallData.length > 0 && (
+                    <ChartCard title="Overall Score Distribution" chartRef={refs.overall}>
+                        <div className="space-y-4 pt-4">{overallData.map(item => (<div key={item.id} className="flex items-center justify-between text-sm">
+                            <div className="flex items-center"><div className="h-3 w-3 rounded-full mr-3" style={{ backgroundColor: COLORS[item.id as ScoreCategory] }} /><span>{item.label}</span></div>
+                            <div className="font-semibold">{item.percentage}%<span className="text-muted-foreground ml-2">({item.value})</span></div>
+                        </div>))}</div>
+                    </ChartCard>
+                )}
+
                 <ChartCard title="Gender Distribution" chartRef={refs.gender}><div className="h-[250px]">
                     <GenderPieChart data={genderData} />
                 </div></ChartCard>
@@ -161,4 +169,3 @@ export function ScoreAnalyticsCard({ leaderboard, municipalityFilter, isLoading,
         </div>
     );
 }
-

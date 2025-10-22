@@ -6,6 +6,9 @@ import { getApplicationDetailsFromDB } from "./analysis";
 // --- Custom Score Calculation Constants ---
 const TECHNICAL_SLUGS = ["nmWNmZPb"];
 const JURY_SLUGS = ["JljrBVpd"];
+// CORRECTED: Slugs for the four challenge statement fields
+const CHALLENGE_STATEMENT_SLUGS = ['gkknPnQp', 'jDJaNYGG', 'RjAnzBZJ', 'OJBPQyGP'];
+const MUNICIPALITY_SLUG = 'rDkKljjz';
 
 const WEIGHT_MAP: { [key: string]: number } = {
     'Digital Transformation': 0.15,
@@ -18,7 +21,6 @@ const WEIGHT_MAP: { [key: string]: number } = {
     'Sustainability, Scalability and (copy)': 0.2,
     'Innovativeness': 0.2,
     'Innovativeness (copy)': 0.2,
-    
     'Value Proposition and Climate Re': 0.2,
     'Value Proposition and Climate Re (copy)': 0.2,
 };
@@ -87,53 +89,6 @@ const safeRound = (num: number, decimals: number = 2): number => {
   return parseFloat(num.toFixed(decimals));
 };
 
-// Helper to extract Municipality from the raw fields array
-const extractMunicipality = (entry: any): string | null => {
-  const rawFields = entry.application_fields || entry.raw_fields || [];
-  // Assuming 'rDkKljjz' is the slug for the Municipality field
-  const muniField = rawFields.find((f: any) => f.slug === "rDkKljjz");
-  if (muniField && muniField.value) {
-    // Assume value is like "Municipality Name - [slug]"
-    return String(muniField.value).split(" - [")[0].trim();
-  }
-  return null;
-};
-
-// NEW: Function to sync the municipality mapping
-async function syncMunicipalityMapping(entries: any[]) {
-  if (entries.length === 0) return;
-
-  let query = `
-        INSERT INTO app_municipality_map (slug, municipality) VALUES
-    `;
-  const values: any[] = [];
-  let paramIndex = 1;
-
-  entries.forEach((entry, index) => {
-    const municipality = extractMunicipality(entry);
-    if (municipality) {
-      query += `($${paramIndex++}, $${paramIndex++})`;
-      values.push(entry.slug, municipality);
-      if (index < entries.length - 1) {
-        query += ", ";
-      }
-    }
-  });
-
-  if (values.length === 0) return;
-
-  if (query.endsWith(", ")) {
-    query = query.substring(0, query.length - 2);
-  }
-
-  query += `
-        ON CONFLICT (slug) DO UPDATE SET
-            municipality = EXCLUDED.municipality;
-    `;
-
-  await sql.query(query, values);
-}
-
 // --- Custom Score Calculation Logic ---
 
 /**
@@ -198,16 +153,19 @@ const transformApiData = (
   return entries.map((entry: any) => {
     // 1. Calculate the CORRECT total score for THIS score set.
     const totalScore = calculateCustomTotalScore(entry, scoreSetSlug);
-
+    
+    // Ensure the tags are clean 
+    let tags = (entry.tags || "")
+        .split(",")
+        .map((t: string) => t.trim())
+        .filter((t: string) => t.length > 0);
+    
     // 2. The scoreBreakdown mapping remains largely the same, but we ensure rawValue is set.
     return {
       slug: entry.slug,
       scoreSetSlug: scoreSetSlug,
       title: entry.title || "Untitled Application",
-      tags: (entry.tags || "")
-        .split(",")
-        .map((t: string) => t.trim())
-        .filter((t: string) => t.length > 0),
+      tags: tags, 
       // 3. Store the calculated score
       totalScore: totalScore, 
       municipality: "",
@@ -242,7 +200,7 @@ async function upsertLeaderboardEntries(entries: LeaderboardEntry[]) {
       entry.slug,
       entry.scoreSetSlug,
       entry.title,
-      entry.tags,
+      entry.tags, // Array of strings 
       entry.totalScore,
       JSON.stringify(entry.scoreBreakdown)
     );
@@ -287,7 +245,6 @@ async function syncLeaderboardCore(
   let hasMorePages = true;
   let totalSynced = 0;
   const PER_PAGE = 50;
-  const allEntries: any[] = [];
 
   while (hasMorePages) {
     const query = new URLSearchParams({
@@ -305,7 +262,6 @@ async function syncLeaderboardCore(
     const entriesOnPage = response.data;
 
     if (entriesOnPage && entriesOnPage.length > 0) {
-      allEntries.push(...entriesOnPage);
       const transformedData = transformApiData(entriesOnPage, scoreSetSlug);
       await upsertLeaderboardEntries(transformedData);
       totalSynced += transformedData.length;
@@ -318,9 +274,6 @@ async function syncLeaderboardCore(
       await sleep(200);
     }
   }
-
-  // Step 3: Extract and sync municipality mapping from the fetched entries
-  await syncMunicipalityMapping(allEntries);
 
   return { success: true, syncedCount: totalSynced };
 }
@@ -350,6 +303,32 @@ export async function getMunicipalities() {
   }
 }
 
+// NEW: Action to fetch unique PS codes for dynamic filtering
+export async function getChallengeStatements(municipality: string): Promise<string[]> {
+    try {
+        let query = `
+            SELECT DISTINCT ps_code 
+            FROM app_municipality_map 
+            WHERE ps_code IS NOT NULL AND ps_code != ''
+        `;
+        let params: string[] = [];
+
+        if (municipality && municipality !== 'all') {
+            query += ` AND municipality = $1`;
+            params.push(municipality);
+        }
+
+        query += ` ORDER BY ps_code ASC`;
+
+        const { rows } = await sql.query<{ ps_code: string }>(query, params);
+        
+        return rows.map(row => row.ps_code);
+    } catch (error) {
+        console.error("Error fetching challenge statements:", error);
+        return [];
+    }
+}
+
 /**
  * Syncs ALL leaderboard entries for a given score set from the API to the local DB.
  * (Original sync functionality, performs cleanup/delete for the specific set).
@@ -366,6 +345,7 @@ export async function syncLeaderboard(
 
 /**
  * Clears the entire leaderboard_entries table and syncs all available score sets.
+ * NOTE: Assumes app_municipality_map is populated via external SQL before running.
  */
 export async function syncAllLeaderboards(config: { apiKey: string }) {
     if (!config.apiKey) throw new Error("API Key not configured.");
@@ -375,6 +355,8 @@ export async function syncAllLeaderboards(config: { apiKey: string }) {
     // 1. Truncate the table
     console.log("Action: Truncating leaderboard_entries table...");
     await sql`TRUNCATE TABLE leaderboard_entries`;
+    // NOTE: app_municipality_map is NOT truncated here as it is populated separately.
+    console.log("Action: Assuming app_municipality_map is populated via external SQL. Skipping population.");
 
     // 2. Get all score sets
     console.log("Action: Fetching all score sets...");
@@ -406,9 +388,10 @@ export async function getApplicationDetailsLocal(slug: string) {
   return details;
 }
 
-// NEW: Type definition for the combined result row
+// UPDATED: Type definition for the combined result row (includes ps_code)
 interface LeaderboardQueryResult extends LeaderboardEntry {
   municipality: string;
+  ps_code: string | null;
 }
 
 /**
@@ -421,7 +404,8 @@ export async function getAllLeaderboardDataForAnalytics(
   tagFilter: string,
   minScore: number | undefined,
   maxScore: number | undefined,
-  municipalityFilter: string
+  municipalityFilter: string,
+  challengeStatementFilter: string // This is a single comma-separated string of tags/codes
 ): Promise<AnalyticsLeaderboardEntry[]> {
   if (!scoreSetSlug) {
     return [];
@@ -437,18 +421,32 @@ export async function getAllLeaderboardDataForAnalytics(
   // --- Conditional JOIN and WHERE Clause ---
   let fromClause = "FROM leaderboard_entries l";
   let selectMunicipality = `COALESCE(m.municipality, 'N/A') AS municipality`;
+  // UPDATED: Select ps_code from the map table
+  let selectPsCode = `m.ps_code AS ps_code`; 
   let wherePrefix = "l.score_set_slug = $1";
 
   const shouldFilterByMunicipality =
     municipalityFilter && municipalityFilter !== "all";
 
-  // We always LEFT JOIN to fetch the municipality name.
+  // We always LEFT JOIN to fetch the municipality name and ps_code.
   fromClause += " LEFT JOIN app_municipality_map m ON l.slug = m.slug";
 
-  // Apply Municipality Filter (only when a specific municipality is selected)
+  // Apply Municipality Filter
   if (shouldFilterByMunicipality) {
     filterClauses.push(`m.municipality = $${paramIndex++}`);
     queryParams.push(municipalityFilter);
+  }
+
+  // Challenge Statement Filter: Filter by ps_code in the mapping table
+  if (challengeStatementFilter && challengeStatementFilter !== 'all') {
+      // Split the comma-separated string into an array of PS codes
+      const psCodes = challengeStatementFilter.split(',').map(tag => tag.trim()).filter(tag => tag.length > 0);
+      if (psCodes.length > 0) {
+          // Use Postgres ANY() operator to check if m.ps_code is one of the provided codes
+          filterClauses.push(`m.ps_code = ANY($${paramIndex++}::VARCHAR[])`);
+          // The query parameter needs to be a standard array of strings
+          queryParams.push(psCodes);
+      }
   }
 
   // Title search filter
@@ -486,7 +484,7 @@ export async function getAllLeaderboardDataForAnalytics(
       AnalyticsLeaderboardEntry & { total_score: string }
     >(
       `
-            SELECT l.slug, l.total_score, ${selectMunicipality}
+            SELECT l.slug, l.total_score, ${selectMunicipality}, ${selectPsCode}
             ${fromClause}
             ${fullWhereClause}
             ORDER BY ${orderBy} ${direction} 
@@ -522,7 +520,8 @@ export async function getLeaderboardPage(
   tagFilter: string,
   minScore: number | undefined,
   maxScore: number | undefined,
-  municipalityFilter: string
+  municipalityFilter: string,
+  challengeStatementFilter: string // This is a single comma-separated string of tags/codes
 ): Promise<{
   data: LeaderboardEntry[];
   current_page: number;
@@ -545,21 +544,34 @@ export async function getLeaderboardPage(
   // --- Conditional JOIN and WHERE Clause ---
   let fromClause = "FROM leaderboard_entries l";
   let selectMunicipality = `COALESCE(m.municipality, 'N/A') AS municipality`;
+  // UPDATED: Select ps_code from the map table
+  let selectPsCode = `m.ps_code AS ps_code`; 
   let wherePrefix = "l.score_set_slug = $1";
 
   // Condition: JOIN the municipality table
   const shouldFilterByMunicipality =
     municipalityFilter && municipalityFilter !== "all";
 
-  // We always LEFT JOIN to fetch the municipality name for the table display.
+  // We always LEFT JOIN to fetch the municipality name and ps_code.
   fromClause += " LEFT JOIN app_municipality_map m ON l.slug = m.slug";
 
-  // Apply Municipality Filter (only when a specific municipality is selected)
+  // Apply Municipality Filter
   if (shouldFilterByMunicipality) {
     filterClauses.push(`m.municipality = $${paramIndex++}`);
     queryParams.push(municipalityFilter);
   }
 
+  // Challenge Statement Filter: Filter by ps_code in the mapping table
+  if (challengeStatementFilter && challengeStatementFilter !== 'all') {
+      // Split the comma-separated string into an array of PS codes
+      const psCodes = challengeStatementFilter.split(',').map(tag => tag.trim()).filter(tag => tag.length > 0);
+      if (psCodes.length > 0) {
+          // Use Postgres ANY() operator to check if m.ps_code is one of the provided codes
+          filterClauses.push(`m.ps_code = ANY($${paramIndex++}::VARCHAR[])`);
+          queryParams.push(psCodes);
+      }
+  }
+  
   // Title search filter
   if (titleSearch) {
     filterClauses.push(`LOWER(l.title) LIKE $${paramIndex++}`);
@@ -611,7 +623,7 @@ export async function getLeaderboardPage(
   // 2. Get paginated data
   const dataResult = await sql.query<LeaderboardQueryResult>(
     `
-        SELECT l.slug, l.score_set_slug, l.title, l.tags, l.total_score, l.score_breakdown, ${selectMunicipality}
+        SELECT l.slug, l.score_set_slug, l.title, l.tags, l.total_score, l.score_breakdown, ${selectMunicipality}, ${selectPsCode}
         ${fromClause}
         ${fullWhereClause}
         ORDER BY ${orderBy} ${direction}

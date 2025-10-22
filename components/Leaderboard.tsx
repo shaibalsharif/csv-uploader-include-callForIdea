@@ -10,11 +10,9 @@ import { Skeleton } from "./ui/skeleton";
 import { Input } from "./ui/input";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "./ui/tooltip";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "./ui/tabs";
-import { RefreshCw, Trophy, AlertCircle, ChevronLeft, ChevronRight, ArrowUpDown, Tag, Search, Eye, MapPin, Loader2, Download } from 'lucide-react';
-// Import syncAllLeaderboards and AlertDialog components
-import { getLeaderboardPage, getScoreSets, syncLeaderboard, syncAllLeaderboards, getMunicipalities, LeaderboardEntry, ScoreBreakdown, AnalyticsLeaderboardEntry, getAllLeaderboardDataForAnalytics } from '../actions/leaderboard';
+import { RefreshCw, Trophy, AlertCircle, ChevronLeft, ChevronRight, ArrowUpDown, Tag, Search, Eye, MapPin, Loader2, Download, ScrollText } from 'lucide-react';
+import { getLeaderboardPage, getScoreSets, syncLeaderboard, syncAllLeaderboards, getMunicipalities, getChallengeStatements, LeaderboardEntry, ScoreBreakdown, AnalyticsLeaderboardEntry, getAllLeaderboardDataForAnalytics } from '../actions/leaderboard';
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from './ui/alert-dialog';
-
 import type { AppRawData } from '../actions/analysis';
 import { getRawApplicationsBySlugs } from '../actions/analysis';
 import { addEligibleTagToApplications } from '../actions/application';
@@ -33,8 +31,10 @@ interface ScoreSet {
     name: { en_GB: string };
 }
 
-interface LeaderboardProps {
-    config: { apiKey: string };
+// Interface for dynamic PS codes
+interface ProblemStatement {
+    name: string; // e.g., Char-ps-1
+    tag: string; // e.g., char-ps-1
 }
 
 function useDebounce<T>(value: T, delay: number): T {
@@ -50,12 +50,17 @@ function useDebounce<T>(value: T, delay: number): T {
     return debouncedValue;
 }
 
+const TECHNICAL_SLUG = 'nmWNmZPb';
+const JURY_SLUG = 'JljrBVpd';
+const ELIGIBILITY_SLUG = "Gnmrzagy"; // Assuming the eligibility slug based on the console log
+const ALL_STATEMENTS_VALUE = '__all__'; // Safe placeholder for "All Statements" in Select
+
 const SkeletonRow = () => (
     <TableRow>
         <TableCell><Skeleton className="h-5 w-5" /></TableCell>
         <TableCell><Skeleton className="h-5 w-8" /></TableCell>
         <TableCell><Skeleton className="h-5 w-full" /></TableCell>
-        <TableCell colSpan={3}><Skeleton className="h-5 w-full" /></TableCell>
+        <TableCell><Skeleton className="h-5 w-full" /></TableCell>
         <TableCell><Skeleton className="h-5 w-20" /></TableCell>
     </TableRow>
 );
@@ -69,6 +74,10 @@ const getScoreColorClass = (rawValue: number, maxScore: number): string => {
     return 'text-red-500';
 };
 
+interface LeaderboardProps {
+    config: { apiKey: string };
+}
+
 export function Leaderboard({ config }: LeaderboardProps) {
     const [leaderboard, setLeaderboard] = useState<LeaderboardEntry[]>([]);
     const [filteredApps, setFilteredApps] = useState<FilteredAppRawData[]>([]);
@@ -78,8 +87,8 @@ export function Leaderboard({ config }: LeaderboardProps) {
     const [isLoading, setIsLoading] = useState(true);
     const [isLoadingSets, setIsLoadingSets] = useState(true);
     const [isSyncing, setIsSyncing] = useState(false);
-    const [isSyncingAll, setIsSyncingAll] = useState(false); // New state for full sync
-    const [isConfirmModalOpen, setIsConfirmModalOpen] = useState(false); // New state for modal
+    const [isSyncingAll, setIsSyncingAll] = useState(false);
+    const [isConfirmModalOpen, setIsConfirmModalOpen] = useState(false);
     const [isTagging, setIsTagging] = useState(false);
     const [error, setError] = useState<string | null>(null);
     const [selectedScoreSet, setSelectedScoreSet] = useState<string>("");
@@ -88,6 +97,9 @@ export function Leaderboard({ config }: LeaderboardProps) {
     const [selectedAppSlug, setSelectedAppSlug] = useState<string | null>(null);
     const [lastSyncTime, setLastSyncTime] = useState<string | null>(null);
     const [currentScoreSetName, setCurrentScoreSetName] = useState<string>("");
+
+    // NEW STATE: Dynamic list of PS codes
+    const [availableChallengeStatements, setAvailableChallengeStatements] = useState<ProblemStatement[]>([]);
 
     const tableContainerRef = useRef<HTMLDivElement>(null);
 
@@ -107,19 +119,38 @@ export function Leaderboard({ config }: LeaderboardProps) {
     const [municipalityFilter, setMunicipalityFilter] = useState("all");
     const debouncedMunicipalityFilter = useDebounce(municipalityFilter, 500);
 
-    const uniqueCriteria = useMemo(() => {
-        const criteriaNames = new Set<string>();
-        leaderboard.forEach(entry => {
-            entry.scoreBreakdown?.forEach(crit => criteriaNames.add(crit.name));
-        });
-        return Array.from(criteriaNames);
-    }, [leaderboard]);
-
+    // CHANGED: challengeStatementFilter is now a string array for multi-select
+    const [challengeStatementFilter, setChallengeStatementFilter] = useState<string[]>([]);
+    const debouncedChallengeStatementString = useDebounce(challengeStatementFilter.join(','), 500);
     const renderScore = (scoreEntry: ScoreBreakdown | undefined): string => {
         if (!scoreEntry) return 'N/A';
         if (scoreEntry.score.includes('/')) return scoreEntry.score;
         return scoreEntry.rawValue.toFixed(2);
     };
+    const isChallengeFilterApplicable = useMemo(() => {
+        return selectedScoreSet === TECHNICAL_SLUG || selectedScoreSet === JURY_SLUG;
+    }, [selectedScoreSet]);
+
+    // Check if score filters are applied (for conditional PDF content and conditional chart display)
+    const isScoreFilterApplied = useMemo(() => {
+        const parsedMin = debouncedMinScore ? parseFloat(debouncedMinScore) : undefined;
+        const parsedMax = debouncedMaxScore ? parseFloat(debouncedMaxScore) : undefined;
+        return parsedMin !== undefined || parsedMax !== undefined;
+    }, [debouncedMinScore, debouncedMaxScore]);
+    const isAnySyncing = isSyncing || isSyncingAll;
+    // FETCH MUNICIPALITY AND PS CODES
+    useEffect(() => {
+        const fetchMuniAndPsCodes = async () => {
+            if (isAnySyncing || isLoadingSets) return;
+            const psCodes = await getChallengeStatements(municipalityFilter);
+
+            // Format for use in UI (tag is the PS code itself)
+            const psData: ProblemStatement[] = psCodes.map(code => ({ name: code, tag: code }));
+            setAvailableChallengeStatements(psData);
+        };
+        fetchMuniAndPsCodes();
+    }, [debouncedMunicipalityFilter, isAnySyncing, isLoadingSets]);
+
 
     useEffect(() => {
         const fetchData = async () => {
@@ -127,11 +158,12 @@ export function Leaderboard({ config }: LeaderboardProps) {
             setIsLoadingSets(true);
             try {
                 const [sets, muniData] = await Promise.all([getScoreSets(config), getMunicipalities()]);
+                console.log(sets);
+
                 setScoreSets(sets);
                 setMunicipalities(muniData);
                 if (sets.length > 0) {
-                    // FIX 2: Set Technical Evaluation (nmWNmZPb) as default
-                    const technicalSet = sets.find(set => set.slug === 'nmWNmZPb');
+                    const technicalSet = sets.find(set => set.slug === TECHNICAL_SLUG);
                     const defaultSet = technicalSet || sets[0];
 
                     setSelectedScoreSet(defaultSet.slug);
@@ -150,7 +182,8 @@ export function Leaderboard({ config }: LeaderboardProps) {
         const parsedMin = debouncedMinScore ? parseFloat(debouncedMinScore) : undefined;
         const parsedMax = debouncedMaxScore ? parseFloat(debouncedMaxScore) : undefined;
         try {
-            const response = await getLeaderboardPage(selectedScoreSet, pagination.currentPage, pagination.perPage, sortConfig, debouncedTitleSearch, debouncedTagFilter, parsedMin, parsedMax, debouncedMunicipalityFilter);
+            // Pass the comma-separated string for filtering
+            const response = await getLeaderboardPage(selectedScoreSet, pagination.currentPage, pagination.perPage, sortConfig, debouncedTitleSearch, debouncedTagFilter, parsedMin, parsedMax, debouncedMunicipalityFilter, debouncedChallengeStatementString);
             setLeaderboard(response.data as LeaderboardEntry[]);
             setPagination(p => ({ ...p, currentPage: response.current_page, lastPage: response.last_page, total: response.total }));
         } catch (err: any) {
@@ -158,7 +191,7 @@ export function Leaderboard({ config }: LeaderboardProps) {
         } finally {
             setIsLoading(false);
         }
-    }, [selectedScoreSet, pagination.currentPage, pagination.perPage, sortConfig, debouncedTitleSearch, debouncedTagFilter, debouncedMinScore, debouncedMaxScore, debouncedMunicipalityFilter]);
+    }, [selectedScoreSet, pagination.currentPage, pagination.perPage, sortConfig, debouncedTitleSearch, debouncedTagFilter, debouncedMinScore, debouncedMaxScore, debouncedMunicipalityFilter, debouncedChallengeStatementString]);
 
     const fetchAnalyticsData = useCallback(async () => {
         if (!selectedScoreSet) return;
@@ -166,7 +199,8 @@ export function Leaderboard({ config }: LeaderboardProps) {
         const parsedMin = debouncedMinScore ? parseFloat(debouncedMinScore) : undefined;
         const parsedMax = debouncedMaxScore ? parseFloat(debouncedMaxScore) : undefined;
         try {
-            const minimalData = await getAllLeaderboardDataForAnalytics(selectedScoreSet, debouncedTitleSearch, debouncedTagFilter, parsedMin, parsedMax, debouncedMunicipalityFilter);
+            // Pass the comma-separated string for filtering
+            const minimalData = await getAllLeaderboardDataForAnalytics(selectedScoreSet, debouncedTitleSearch, debouncedTagFilter, parsedMin, parsedMax, debouncedMunicipalityFilter, debouncedChallengeStatementString);
             if (minimalData.length === 0) { setFilteredApps([]); return; }
             const slugs = minimalData.map(d => d.slug);
             const rawDataList = await getRawApplicationsBySlugs(slugs);
@@ -182,16 +216,39 @@ export function Leaderboard({ config }: LeaderboardProps) {
         } finally {
             setIsAnalyticsLoading(false);
         }
-    }, [selectedScoreSet, debouncedTitleSearch, debouncedTagFilter, debouncedMinScore, debouncedMaxScore, debouncedMunicipalityFilter]);
+    }, [selectedScoreSet, debouncedTitleSearch, debouncedTagFilter, debouncedMinScore, debouncedMaxScore, debouncedMunicipalityFilter, debouncedChallengeStatementString]);
 
     useEffect(() => {
+        // Clear filter if not applicable to the current score set
+        if (!isChallengeFilterApplicable && challengeStatementFilter.length > 0) {
+            setChallengeStatementFilter([]);
+        }
+
+        // Logic to clear/reset invalid challenge filters based on current municipality
+        const availableTags = availableChallengeStatements.map(cs => cs.tag);
+        const newFilters = challengeStatementFilter.filter(tag => availableTags.includes(tag));
+
+        if (municipalityFilter !== 'all') {
+            // If switching to single-select, enforce 0 or 1 selection
+            if (newFilters.length > 1) {
+                setChallengeStatementFilter(newFilters.slice(0, 1));
+            } else if (newFilters.length === 0 && challengeStatementFilter.length > 0) {
+                // Clear any non-available tags
+                setChallengeStatementFilter([]);
+            }
+        } else if (newFilters.length !== challengeStatementFilter.length) {
+            // In multi-select mode, just clean out invalid tags
+            setChallengeStatementFilter(newFilters);
+        }
+
+
         if (pagination.currentPage !== 1) setPagination(p => ({ ...p, currentPage: 1 })); else fetchLeaderboard();
         fetchAnalyticsData();
-    }, [selectedScoreSet, pagination.perPage, sortConfig, debouncedTitleSearch, debouncedTagFilter, debouncedMinScore, debouncedMaxScore, debouncedMunicipalityFilter]);
+    }, [selectedScoreSet, pagination.perPage, sortConfig, debouncedTitleSearch, debouncedTagFilter, debouncedMinScore, debouncedMaxScore, debouncedMunicipalityFilter, debouncedChallengeStatementString, isChallengeFilterApplicable, availableChallengeStatements]);
 
     useEffect(() => { fetchLeaderboard(); }, [pagination.currentPage]);
 
-    const isAnySyncing = isSyncing || isSyncingAll;
+
 
     const handleSync = async () => {
         if (!config.apiKey || !selectedScoreSet) return;
@@ -213,14 +270,13 @@ export function Leaderboard({ config }: LeaderboardProps) {
         }
     };
 
-    // NEW handler for the full sync
     const handleSyncAll = async () => {
         if (!config.apiKey) return;
         setIsConfirmModalOpen(false);
         setIsSyncingAll(true);
         setError(null);
         try {
-            toast({ title: "Full Sync Started", description: "Clearing ALL data and fetching ALL score sets. This will take significant time and API calls." });
+            toast({ title: "Full Sync Started", description: "Clearing ALL data and fetching ALL score sets. This will take significant time and API calls. Please ensure you've run the SQL migration." });
             const result = await syncAllLeaderboards(config);
             toast({ title: "Full Sync Complete", description: `Synchronized ${result.syncedCount} applications across all score sets.` });
             setLastSyncTime(new Date().toISOString());
@@ -229,7 +285,7 @@ export function Leaderboard({ config }: LeaderboardProps) {
             setMunicipalities(muniData);
             setPagination(p => ({ ...p, currentPage: 1 }));
         } catch (err: any) {
-            setError(err.message || "Full synchronization failed.");
+            setError(err.message || "Full synchronization failed. Check if app_municipality_map is populated.");
             toast({ title: "Full Sync Failed", description: err.message, variant: "destructive" });
         } finally {
             setIsSyncingAll(false);
@@ -260,7 +316,29 @@ export function Leaderboard({ config }: LeaderboardProps) {
 
     const cleanMunicipalities = municipalities.filter(muni => muni && muni.trim() !== "");
     const showMunicipalityColumn = debouncedMunicipalityFilter === 'all';
-    const totalColumns = 6 + uniqueCriteria.length + (showMunicipalityColumn ? 1 : 0);
+    const totalColumns = 6;
+
+    // UI Logic for Challenge Selects
+    const isMultiSelect = municipalityFilter === 'all';
+
+    // The Select component's value for single-select. Maps [] to ALL_STATEMENTS_VALUE.
+    const singlePsValue = !isMultiSelect && challengeStatementFilter.length === 0 ? ALL_STATEMENTS_VALUE : challengeStatementFilter[0];
+
+    const handleSingleSelectChange = (tag: string) => {
+        // If ALL_STATEMENTS_VALUE is selected, clear the state array. Otherwise, set the tag.
+        setChallengeStatementFilter(tag === ALL_STATEMENTS_VALUE ? [] : [tag]);
+    };
+
+    const handleMultiSelectClick = (tag: string) => {
+        setChallengeStatementFilter(prev => prev.includes(tag)
+            ? prev.filter(t => t !== tag)
+            : [...prev, tag]
+        );
+    };
+
+    // Determine if table should show individual criteria scores or simplified view
+    const isDetailedView = selectedScoreSet !== TECHNICAL_SLUG && selectedScoreSet !== JURY_SLUG;
+
 
     return (
         <Card className="mt-6 shadow-lg">
@@ -271,7 +349,18 @@ export function Leaderboard({ config }: LeaderboardProps) {
                         <CardDescription>Analyze and manage applications synchronized from GoodGrants.</CardDescription>
                     </div>
                     <div className="flex items-center gap-2 mt-4 md:mt-0 flex-wrap">
-                        <GenerateReportButton filteredApps={filteredApps} municipalityFilter={debouncedMunicipalityFilter} lastSyncTime={lastSyncTime} scoreSetName={currentScoreSetName} minScore={debouncedMinScore} maxScore={debouncedMaxScore} disabled={isAnySyncing || isAnalyticsLoading} />
+                        {/* Conditional PDF Generation Flag: isScoreFilterApplied */}
+                        <GenerateReportButton
+                            filteredApps={filteredApps}
+                            municipalityFilter={debouncedMunicipalityFilter}
+                            challengeStatementFilter={debouncedChallengeStatementString} // PASS STRING
+                            lastSyncTime={lastSyncTime}
+                            scoreSetName={currentScoreSetName}
+                            minScore={debouncedMinScore}
+                            maxScore={debouncedMaxScore}
+                            disabled={isAnySyncing || isAnalyticsLoading}
+                            skipScoreDistribution={isScoreFilterApplied}
+                        />
 
                         {/* Sync All Button and Modal */}
                         <AlertDialog open={isConfirmModalOpen} onOpenChange={setIsConfirmModalOpen}>
@@ -323,7 +412,8 @@ export function Leaderboard({ config }: LeaderboardProps) {
                     <TabsContent value="leaderboard">
                         <div ref={tableContainerRef}>
                             <div className="my-4 p-4 border rounded-lg bg-muted/40">
-                                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5 gap-4">
+                                {/* Filter Row 1 */}
+                                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5 gap-4 mb-4">
                                     <Input placeholder="Search title..." value={titleSearch} onChange={(e) => setTitleSearch(e.target.value)} className="pl-4" disabled={isAnySyncing} />
                                     <Select value={municipalityFilter} onValueChange={setMunicipalityFilter} disabled={isAnySyncing || municipalities.length === 0}>
                                         <SelectTrigger><SelectValue placeholder="Filter Municipality" /></SelectTrigger>
@@ -332,19 +422,72 @@ export function Leaderboard({ config }: LeaderboardProps) {
                                     <Input type="number" placeholder="Min Score" value={minScore} onChange={(e) => setMinScore(e.target.value)} disabled={isAnySyncing} />
                                     <Input type="number" placeholder="Max Score" value={maxScore} onChange={(e) => setMaxScore(e.target.value)} disabled={isAnySyncing} />
                                 </div>
+                                {/* Filter Row 2: Challenge Statement Filter */}
+                                {isChallengeFilterApplicable && availableChallengeStatements.length > 0 && (
+                                    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5 gap-4">
+                                        {isMultiSelect ? (
+                                            <div className="flex flex-col space-y-1 xl:col-span-full">
+                                                <label className="text-sm font-medium leading-none">Challenge Statements (Multi-select)</label>
+                                                <div className="flex flex-wrap gap-2 p-2 border rounded-md bg-white overflow-y-auto max-h-32">
+                                                    <Button
+                                                        variant={challengeStatementFilter.length === 0 ? "default" : "outline"}
+                                                        size="sm"
+                                                        onClick={() => setChallengeStatementFilter([])}
+                                                        disabled={isAnySyncing}
+                                                        className='text-xs'
+                                                    >
+                                                        All Statements
+                                                    </Button>
+                                                    {availableChallengeStatements.map(cs => (
+                                                        <Button
+                                                            key={cs.tag}
+                                                            variant={challengeStatementFilter.includes(cs.tag) ? "default" : "outline"}
+                                                            size="sm"
+                                                            onClick={() => handleMultiSelectClick(cs.tag)}
+                                                            disabled={isAnySyncing}
+                                                            className='text-xs'
+                                                        >
+                                                            {cs.tag}
+                                                        </Button>
+                                                    ))}
+                                                </div>
+                                            </div>
+                                        ) : (
+                                            <Select
+                                                value={singlePsValue} // Use safe singlePsValue
+                                                onValueChange={handleSingleSelectChange}
+                                                disabled={isAnySyncing || availableChallengeStatements.length === 0}
+                                            >
+                                                <SelectTrigger><SelectValue placeholder="Filter Challenge Statement (Single)" /></SelectTrigger>
+                                                <SelectContent>
+                                                    {/* FIX: Use safe placeholder value */}
+                                                    <SelectItem value={ALL_STATEMENTS_VALUE}>All Statements</SelectItem>
+                                                    {availableChallengeStatements.map(cs => (
+                                                        <SelectItem key={cs.tag} value={cs.tag}>{cs.name}</SelectItem>
+                                                    ))}
+                                                </SelectContent>
+                                            </Select>
+                                        )}
+                                        <div className='hidden sm:block' />
+                                        <div className='hidden sm:block' />
+                                        <div className='hidden sm:block' />
+                                    </div>
+                                )}
                             </div>
                             <div className="my-4 flex justify-between items-center">
                                 <div className="text-sm text-muted-foreground">{pagination.total} applications found.</div>
                                 {selectedSlugs.length > 0 && (<Button onClick={handleTagSelected} disabled={isTagging || isAnySyncing}><Tag className="mr-2 h-4 w-4" /> Tag {selectedSlugs.length} as Eligible</Button>)}
                             </div>
                             <div className="rounded-md border overflow-x-auto">
-                                <Table className="min-w-[1200px]">
+                                <Table className="min-w-[700px]">
                                     <TableHeader><TableRow>
                                         <TableHead className="w-12"><Checkbox checked={selectedSlugs.length > 0 && eligibleRows.length > 0 && selectedSlugs.length === eligibleRows.length} onCheckedChange={handleSelectAll} disabled={eligibleRows.length === 0 || isAnySyncing} /></TableHead>
                                         <TableHead className="w-16">Rank</TableHead>
                                         <TableHead className="cursor-pointer w-[30%]" onClick={() => handleSort('title')}>Application Title & Tags {renderSortArrow('title')}</TableHead>
-                                        {showMunicipalityColumn && (<TableHead className="w-[150px] border-l">Municipality</TableHead>)}
-                                        {uniqueCriteria.map(name => (<TableHead key={name} className="text-center w-[100px] text-xs font-semibold border-l">{name}</TableHead>))}
+                                        {/* CONDITIONAL COLUMN: Score Breakdown (only for Eligibility, etc.) */}
+                                        {isDetailedView && (<TableHead className="text-center w-[150px] border-l">Score Breakdown</TableHead>)}
+                                        {/* NEW COLUMN: Problem Statement */}
+                                        {isChallengeFilterApplicable && (<TableHead className="w-[150px] border-l">Problem Statement</TableHead>)}
                                         <TableHead className="cursor-pointer text-center w-[100px] border-l" onClick={() => handleSort('total_score')}>Total Score {renderSortArrow('total_score')}</TableHead>
                                         <TableHead className="w-16 text-center">Actions</TableHead>
                                     </TableRow></TableHeader>
@@ -353,16 +496,47 @@ export function Leaderboard({ config }: LeaderboardProps) {
                                             : error ? <TableRow><TableCell colSpan={totalColumns} className="h-24 text-center text-red-500"><AlertCircle className="mx-auto h-6 w-6 mb-2" />{error}</TableCell></TableRow>
                                                 : leaderboard.length > 0 ? leaderboard.map((entry, index) => {
                                                     const rank = (pagination.currentPage - 1) * pagination.perPage + index + 1;
+
+                                                    // Get the PS code from the entry's tags (since we rely on DB population for m.ps_code, 
+                                                    // we cannot rely on it being in the main entry object directly here unless the DB query returned it)
+                                                    // For display, we use the first tag that matches an available challenge statement as a fallback.
+                                                    const psCodeDisplay = entry.tags.find(t => availableChallengeStatements.some(cs => cs.tag === t)) || 'N/A';
+
                                                     return (<TableRow key={entry.slug}>
                                                         <TableCell>{isEligibleForTagging(entry) && <Checkbox checked={selectedSlugs.includes(entry.slug)} onCheckedChange={(c) => handleSelectRow(entry.slug, !!c)} />}</TableCell>
                                                         <TableCell className="font-bold text-lg">{rank}</TableCell>
                                                         <TableCell><div>{entry.title}</div><div className="flex flex-wrap gap-1 mt-2">{entry.tags.map(tag => <Badge key={tag} variant="secondary">{tag}</Badge>)}</div></TableCell>
-                                                        {showMunicipalityColumn && <TableCell className="border-l text-sm"><Badge variant="outline">{entry.municipality || 'N/A'}</Badge></TableCell>}
-                                                        {uniqueCriteria.map(critName => {
-                                                            const scoreEntry = entry.scoreBreakdown?.find(c => c.name === critName);
-                                                            return (<TableCell key={critName} className={`text-center font-mono text-sm border-l ${getScoreColorClass(scoreEntry?.rawValue || 0, scoreEntry?.maxScore || 2)}`}>{renderScore(scoreEntry)}</TableCell>);
-                                                        })}
-                                                        <TableCell className="text-center border-l"><TooltipProvider><Tooltip><TooltipTrigger asChild><span className="cursor-help font-semibold text-lg text-green-600">{entry.totalScore.toFixed(2)}</span></TooltipTrigger><TooltipContent><p className="font-bold">Breakdown:</p>{entry.scoreBreakdown.map(c => <div key={c.name}>{c.name}: <span className="font-mono">{renderScore(c)}</span></div>)}</TooltipContent></Tooltip></TooltipProvider></TableCell>
+
+                                                        {/* CONDITIONAL COLUMN: Score Breakdown (only for Eligibility, etc.) */}
+                                                        {isDetailedView && (
+                                                            <TableCell className="text-center border-l">
+                                                                <TooltipProvider><Tooltip>
+                                                                    <TooltipTrigger asChild>
+                                                                        <ScrollText className='h-4 w-4 mx-auto text-muted-foreground cursor-help' />
+                                                                    </TooltipTrigger>
+                                                                    <TooltipContent>
+                                                                        <p className="font-bold">Breakdown:</p>
+                                                                        {entry.scoreBreakdown.map(c => <div key={c.name}>{c.name}: <span className="font-mono">{renderScore(c)}</span></div>)}
+                                                                    </TooltipContent>
+                                                                </Tooltip></TooltipProvider>
+                                                            </TableCell>
+                                                        )}
+
+                                                        {/* NEW COLUMN: Problem Statement */}
+                                                        {isChallengeFilterApplicable && <TableCell className="border-l text-sm"><Badge variant="outline">{psCodeDisplay}</Badge></TableCell>}
+
+                                                        <TableCell className="text-center border-l">
+                                                            <TooltipProvider><Tooltip>
+                                                                <TooltipTrigger asChild><span className="cursor-help font-semibold text-lg text-green-600">{entry.totalScore.toFixed(2)}</span></TooltipTrigger>
+                                                                {/* For Technical/Jury, Total Score tooltip shows breakdown */}
+                                                                {!isDetailedView && (
+                                                                    <TooltipContent>
+                                                                        <p className="font-bold">Breakdown:</p>
+                                                                        {entry.scoreBreakdown.map(c => <div key={c.name}>{c.name}: <span className="font-mono">{renderScore(c)}</span></div>)}
+                                                                    </TooltipContent>
+                                                                )}
+                                                            </Tooltip></TooltipProvider>
+                                                        </TableCell>
                                                         <TableCell className="text-center"><Button variant="ghost" size="icon" onClick={() => handleViewDetails(entry.slug)}><Eye className="h-4 w-4" /></Button></TableCell>
                                                     </TableRow>);
                                                 })
@@ -383,7 +557,7 @@ export function Leaderboard({ config }: LeaderboardProps) {
                     </TabsContent>
                     <TabsContent value="analytics">
                         <div className="my-4 p-4 border rounded-lg bg-muted/40">
-                            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-2 xl:grid-cols-4 gap-4">
+                            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-2 xl:grid-cols-4 gap-4 mb-4">
                                 <Input placeholder="Search title..." value={titleSearch} onChange={(e) => setTitleSearch(e.target.value)} className="pl-4" disabled={isAnySyncing} />
                                 <Select value={municipalityFilter} onValueChange={setMunicipalityFilter} disabled={isAnySyncing || municipalities.length === 0}>
                                     <SelectTrigger><SelectValue placeholder="Filter Municipality" /></SelectTrigger>
@@ -392,8 +566,65 @@ export function Leaderboard({ config }: LeaderboardProps) {
                                 <Input type="number" placeholder="Min Score" value={minScore} onChange={(e) => setMinScore(e.target.value)} disabled={isAnySyncing} />
                                 <Input type="number" placeholder="Max Score" value={maxScore} onChange={(e) => setMaxScore(e.target.value)} disabled={isAnySyncing} />
                             </div>
+                            {/* Filter Row 2: Challenge Statement Filter in Analytics */}
+                            {isChallengeFilterApplicable && availableChallengeStatements.length > 0 && (
+                                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5 gap-4">
+                                    {isMultiSelect ? (
+                                        <div className="flex flex-col space-y-1 xl:col-span-2">
+                                            <label className="text-sm font-medium leading-none">Challenge Statements (Multi-select)</label>
+                                            <div className="flex flex-wrap gap-2 p-2 border rounded-md bg-white overflow-y-auto max-h-32">
+                                                <Button
+                                                    variant={challengeStatementFilter.length === 0 ? "default" : "outline"}
+                                                    size="sm"
+                                                    onClick={() => setChallengeStatementFilter([])}
+                                                    disabled={isAnySyncing}
+                                                    className='text-xs'
+                                                >
+                                                    All Statements
+                                                </Button>
+                                                {availableChallengeStatements.map(cs => (
+                                                    <Button
+                                                        key={cs.tag}
+                                                        variant={challengeStatementFilter.includes(cs.tag) ? "default" : "outline"}
+                                                        size="sm"
+                                                        onClick={() => handleMultiSelectClick(cs.tag)}
+                                                        disabled={isAnySyncing}
+                                                        className='text-xs'
+                                                    >
+                                                        {cs.tag}
+                                                    </Button>
+                                                ))}
+                                            </div>
+                                        </div>
+                                    ) : (
+                                        <Select
+                                            value={singlePsValue}
+                                            onValueChange={handleSingleSelectChange}
+                                            disabled={isAnySyncing || availableChallengeStatements.length === 0}
+                                        >
+                                            <SelectTrigger><SelectValue placeholder="Filter Challenge Statement (Single)" /></SelectTrigger>
+                                            <SelectContent>
+                                                <SelectItem value={ALL_STATEMENTS_VALUE}>All Statements</SelectItem>
+                                                {availableChallengeStatements.map(cs => (
+                                                    <SelectItem key={cs.tag} value={cs.tag}>{cs.name}</SelectItem>
+                                                ))}
+                                            </SelectContent>
+                                        </Select>
+                                    )}
+                                    <div className='hidden sm:block' />
+                                    <div className='hidden sm:block' />
+                                    <div className='hidden sm:block' />
+                                </div>
+                            )}
                         </div>
-                        <ScoreAnalyticsCard leaderboard={filteredApps as unknown as AnalyticsLeaderboardEntry[]} municipalityFilter={debouncedMunicipalityFilter} isLoading={isAnalyticsLoading} scoreSetName={currentScoreSetName} filteredApps={filteredApps} />
+                        <ScoreAnalyticsCard
+                            leaderboard={filteredApps as unknown as AnalyticsLeaderboardEntry[]}
+                            municipalityFilter={debouncedMunicipalityFilter}
+                            isLoading={isAnalyticsLoading}
+                            scoreSetName={currentScoreSetName}
+                            filteredApps={filteredApps}
+                            skipScoreDistribution={isScoreFilterApplied}
+                        />
                     </TabsContent>
                 </Tabs>
             </CardContent>

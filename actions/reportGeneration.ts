@@ -2,10 +2,14 @@
 
 import type { FilteredAppRawData } from '@/components/LeaderboardBreakdowns';
 
+// CORRECTED: Slugs for the four challenge statement fields
+const CHALLENGE_STATEMENT_SLUGS = ['gkknPnQp', 'jDJaNYGG', 'RjAnzBZJ', 'OJBPQyGP'];
+
 // --- Type Definitions ---
 interface ReportDataRequest {
   filteredApps: FilteredAppRawData[];
   municipalityFilter: string;
+  challengeStatementFilter: string; // ADDED: New filter for challenge statement (comma-separated string)
   lastSyncTime: string | null;
   scoreSetName: string;
   minScore: string;
@@ -29,7 +33,8 @@ const extractPsCodeAndLabel = (app: FilteredAppRawData, possibleSlugs: string[])
     const code = field.value ? String(field.value).split(" - [")[0].trim() : "N/A";
     const label = field.translated?.en_GB || "";
     if (code === "N/A") return "N/A";
-    return label ? `${code}: ${label}` : code;
+    // We expect the PS code to be the primary differentiator, so we return the code itself
+    return code; 
 };
 
 
@@ -41,7 +46,8 @@ const abbreviateAgeLabel = (label: string): string => {
 
 // --- Main Server Action ---
 export async function generatePDFReport(reportData: ReportDataRequest): Promise<string> {
-  const { filteredApps, municipalityFilter, lastSyncTime, scoreSetName, minScore, maxScore } = reportData;
+  // UPDATED: Destructure new parameter
+  const { filteredApps, municipalityFilter, challengeStatementFilter, lastSyncTime, scoreSetName, minScore, maxScore } = reportData;
 
   const createBreakdown = (extractor: (app: FilteredAppRawData) => string) =>
     filteredApps.reduce((acc, app) => {
@@ -58,6 +64,7 @@ export async function generatePDFReport(reportData: ReportDataRequest): Promise<
       lastSyncTime: lastSyncTime || 'N/A',
       scoreSetName,
       municipalityFilter: municipalityFilter === 'all' ? 'All Municipalities' : municipalityFilter,
+      challengeStatementFilter: challengeStatementFilter, // ADDED: Add to metadata
       minScore: minScore || null,
       maxScore: maxScore || null,
       totalApplications: filteredApps.length,
@@ -72,9 +79,9 @@ export async function generatePDFReport(reportData: ReportDataRequest): Promise<
     categoryBreakdown: createBreakdown(app => app.category?.name?.en_GB || 'Uncategorized'),
     genderBreakdown: createBreakdown(app => extractFieldValue(app, 'rojNQzOz')),
     ageBreakdown: createBreakdown(app => abbreviateAgeLabel(extractFieldValue(app, 'xjzONPwj'))),
-    psCodeBreakdown: createBreakdown(app => extractPsCodeAndLabel(app, ['gkknPnQp', 'jDJaNYGG', 'RjAnzBZJ', 'OJBPQyGP'])),
+    // Use the defined constant for PS field slugs
+    psCodeBreakdown: createBreakdown(app => extractPsCodeAndLabel(app, CHALLENGE_STATEMENT_SLUGS)),
   };
   
   return JSON.stringify(reportContent);
 }
-

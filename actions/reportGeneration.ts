@@ -27,13 +27,39 @@ const extractFieldValue = (app: FilteredAppRawData, slug: string): string => {
   return value !== null && value !== undefined ? String(value).split(" - [")[0].trim() : "N/A";
 };
 
+// FIX: Extract both the code and the potentially descriptive label.
 const extractPsCodeAndLabel = (app: FilteredAppRawData, possibleSlugs: string[]): string => {
     const field = (app.raw_fields as any[])?.find((f: any) => possibleSlugs.includes(f.slug));
-    if (!field) return "N/A";
-    const code = field.value ? String(field.value).split(" - [")[0].trim() : "N/A";
-    const label = field.translated?.en_GB || "";
-    if (code === "N/A") return "N/A";
-    // We expect the PS code to be the primary differentiator, so we return the code itself
+    if (!field || !field.value) return "N/A";
+
+    const fullValueString = String(field.value);
+
+    // 1. Extract the clean code (e.g., "Char-PS-1")
+    const code = fullValueString.split(" - [")[0].trim();
+    if (!code || code === 'N/A') return "N/A";
+
+    // 2. Try to get a descriptive label, typically from 'translated' or by stripping the code from the full value string
+    let label = field.translated?.en_GB;
+    
+    if (label && label.length > 0) {
+        // If translated label exists, use it. We assume it contains the description.
+        return `${code}: ${label}`;
+    }
+
+    // Fallback: Use the application's tags if they contain the code and a description
+    // NOTE: This relies on the tag format being descriptive, but since we cannot reliably infer the statement,
+    // we must rely on the full value field having the description. 
+    
+    // Attempt to parse a description if the original value is not just the code
+    if (fullValueString.includes(':')) {
+        // Assume format is "CODE: Description" or similar
+        const descriptionPart = fullValueString.split(':').slice(1).join(':').trim();
+        if (descriptionPart.length > 0) {
+            return `${code}: ${descriptionPart}`;
+        }
+    } 
+    
+    // If all else fails, return the code itself.
     return code; 
 };
 
@@ -52,7 +78,8 @@ export async function generatePDFReport(reportData: ReportDataRequest): Promise<
   const createBreakdown = (extractor: (app: FilteredAppRawData) => string) =>
     filteredApps.reduce((acc, app) => {
         const key = extractor(app);
-        if (key !== 'N/A') {
+        // Ensure key is not N/A or null/undefined strings
+        if (key && key !== 'N/A' && key !== 'null') {
             acc[key] = (acc[key] || 0) + 1;
         }
         return acc;

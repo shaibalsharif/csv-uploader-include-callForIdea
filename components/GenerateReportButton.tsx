@@ -46,17 +46,17 @@ export function GenerateReportButton({
         setIsGenerating(true);
         try {
             // Updated call to backend report generation action
-            const reportDataJson = await generatePDFReport({
-                filteredApps,
-                municipalityFilter,
+            const reportDataJson = await generatePDFReport({ 
+                filteredApps, 
+                municipalityFilter, 
                 challengeStatementFilter, // PASS NEW FILTER
-                lastSyncTime,
-                scoreSetName,
-                minScore,
-                maxScore
+                lastSyncTime, 
+                scoreSetName, 
+                minScore, 
+                maxScore 
             });
             const reportData = JSON.parse(reportDataJson);
-
+            
             const doc = new jsPDF();
             const pageWidth = doc.internal.pageSize.getWidth();
             const pageHeight = doc.internal.pageSize.getHeight();
@@ -69,18 +69,18 @@ export function GenerateReportButton({
             const tillerImgProps = doc.getImageProperties(TILLER_LOGO_BASE64);
             const tillerHeight = (tillerImgProps.height * logoWidth) / tillerImgProps.width;
             doc.addImage(TILLER_LOGO_BASE64, 'PNG', 15, 10, logoWidth, tillerHeight);
-
+            
             // GIZ Logo (aspect ratio preserved)
             const gizImgProps = doc.getImageProperties(GIZ_LOGO_BASE64);
             const gizHeight = (gizImgProps.height * logoWidth) / gizImgProps.width;
             doc.addImage(GIZ_LOGO_BASE64, 'PNG', pageWidth - 45, 10, logoWidth, gizHeight);
-
+            
             // Set yPosition dynamically below the tallest logo
             yPosition = 10 + Math.max(tillerHeight, gizHeight) + 10;
-
+            
             doc.setFontSize(18).setFont('helvetica', 'bold').text('INCLUDE Call for Ideas - Analytics Report', pageWidth / 2, yPosition, { align: 'center' });
             yPosition += 10;
-
+            
             // --- Metadata ---
             doc.setFontSize(10).setFont('helvetica', 'normal');
             doc.text(`Report Generated: ${new Date(reportData.metadata.generatedAt).toLocaleString()}`, 15, yPosition);
@@ -89,7 +89,7 @@ export function GenerateReportButton({
             yPosition += 6;
             doc.text(`Municipality Filter: ${reportData.metadata.municipalityFilter}`, 15, yPosition);
             yPosition += 6;
-            if (reportData.metadata.challengeStatementFilter && reportData.metadata.challengeStatementFilter !== 'all') { doc.text(`Challenge Statement Filter: ${reportData.metadata.challengeStatementFilter}`, 15, yPosition); yPosition += 6; }
+            if (reportData.metadata.challengeStatementFilter && reportData.metadata.challengeStatementFilter !== 'all' && reportData.metadata.challengeStatementFilter !== '') { doc.text(`Challenge Statement Filter: ${reportData.metadata.challengeStatementFilter}`, 15, yPosition); yPosition += 6; }
             if (reportData.metadata.minScore) { doc.text(`Minimum Score: ${reportData.metadata.minScore}`, 15, yPosition); yPosition += 6; }
             if (reportData.metadata.maxScore) { doc.text(`Maximum Score: ${reportData.metadata.maxScore}`, 15, yPosition); yPosition += 6; }
             doc.setFont('helvetica', 'bold').text(`Total Applications in Filter: ${reportData.metadata.totalApplications}`, 15, yPosition);
@@ -100,25 +100,27 @@ export function GenerateReportButton({
                 const margin = 15, barHeight = 7, barPadding = 3, labelAreaWidth = 80; // Increased label area width
                 const chartHeight = (barHeight + barPadding) * data.length + 15;
                 if (yPosition + chartHeight > pageHeight - 15) { doc.addPage(); yPosition = 20; }
-
+                
                 doc.setFontSize(12).setFont('helvetica', 'bold').text(title, margin, yPosition);
                 yPosition += 10;
-
+                
                 const chartAreaWidth = pageWidth - margin * 2 - labelAreaWidth - 5;
                 const maxValue = Math.max(1, ...data.map(d => d.value));
                 const scale = chartAreaWidth / maxValue;
-
+                
                 doc.setFontSize(8).setFont('helvetica', 'normal');
                 data.forEach((item, index) => {
                     const currentY = yPosition + (index * (barHeight + barPadding));
-                    const labelLines = doc.splitTextToSize(item.label, labelAreaWidth - 2);
-                    doc.text(labelLines, margin, currentY + barHeight / 2, { align: "center" });
-                    doc.setFillColor(79, 132, 196).rect(margin + labelAreaWidth, currentY, item.value * scale, barHeight, 'F');
-                    doc.text(item.value.toString(), margin + labelAreaWidth + (item.value * scale) + 2, currentY + barHeight / 2, { align: 'center' });
+                    // Check if label is long and increase label area width dynamically if necessary
+                    const effectiveLabelAreaWidth = Math.min(pageWidth / 3, Math.max(80, item.label.length * 1.5));
+                    const labelLines = doc.splitTextToSize(item.label, effectiveLabelAreaWidth - 2);
+                    doc.text(labelLines, margin, currentY + barHeight / 2, { verticalAlign: 'middle' });
+                    doc.setFillColor(79, 132, 196).rect(margin + effectiveLabelAreaWidth, currentY, item.value * scale * (80 / effectiveLabelAreaWidth), barHeight, 'F'); // Adjust bar scale if label area changed
+                    doc.text(item.value.toString(), margin + effectiveLabelAreaWidth + (item.value * scale * (80 / effectiveLabelAreaWidth)) + 2, currentY + barHeight / 2, { verticalAlign: 'middle' });
                 });
                 yPosition += chartHeight;
             };
-
+            
             let sectionCount = 1; // Start counter for dynamic numbering
 
             const addSection = (title: string, tableData: (string | number)[][], head: string[][], chartData: { label: string; value: number }[]) => {
@@ -132,15 +134,16 @@ export function GenerateReportButton({
                     drawHorizontalBarChart(`${title} - Chart`, chartData);
                 }
             };
-
+            
             const totalApps = reportData.metadata.totalApplications;
-            const getTableData = (data: Record<string, number>) => Object.entries(data).map(([key, count]) => [key, count.toString(), `${totalApps > 0 ? ((count / totalApps) * 100).toFixed(1) : 0}%`]).sort((a, b) => Number(b[1]) - Number(a[1]));
-            const transformForChart = (dataObject: Record<string, number>) => Object.entries(dataObject).map(([label, value]) => ({ label, value })).sort((a, b) => b.value - a.value);
+            const getTableData = (data: Record<string, number>) => Object.entries(data).map(([key, count]) => [key, count.toString(), `${totalApps > 0 ? ((count / totalApps) * 100).toFixed(1) : 0}%`]).sort((a,b) => Number(b[1]) - Number(a[1]));
+            const transformForChart = (dataObject: Record<string, number>) => Object.entries(dataObject).map(([label, value]) => ({ label, value })).sort((a,b) => b.value - a.value);
 
             // --- Content Sections ---
+            
             // 1. Score Distribution (CONDITIONAL)
             if (!skipScoreDistribution) {
-                addSection('Score Distribution', getTableData(reportData.scoreDistribution).sort((a, b) => String(a[0]).localeCompare(String(b[0]))), [['Score Category', 'Count', 'Percentage']], transformForChart(reportData.scoreDistribution));
+                addSection('Score Distribution', getTableData(reportData.scoreDistribution).sort((a,b) => String(a[0]).localeCompare(String(b[0]))), [['Score Category', 'Count', 'Percentage']], transformForChart(reportData.scoreDistribution));
             } else {
                 sectionCount++; // Still reserve the number for subsequent sections to start correctly if 1 is skipped
                 doc.setFontSize(12).setFont('helvetica', 'bold').text("1. Score Distribution: Skipped due to Min/Max Score filter.", 15, yPosition);
@@ -149,25 +152,27 @@ export function GenerateReportButton({
 
             // 2. Municipality Distribution
             addSection('Municipality Distribution', getTableData(reportData.municipalBreakdown), [['Municipality', 'Count', 'Percentage']], transformForChart(reportData.municipalBreakdown));
-
+            
             // 3. Category (Digital/Non-Digital)
             addSection('Category (Digital/Non-Digital)', getTableData(reportData.categoryBreakdown), [['Category', 'Count', 'Percentage']], transformForChart(reportData.categoryBreakdown));
-
+            
             // 4. Gender Distribution
             addSection('Gender Distribution', getTableData(reportData.genderBreakdown), [['Gender', 'Count', 'Percentage']], transformForChart(reportData.genderBreakdown));
-
+            
             // 5. Age Range Distribution
             const ageOrder = ['< 18', '18-25-years', '26-35-years', '36-45-years', '46-55-years', '56-65-years', '> 65'];
             const ageTableData = ageOrder.filter(age => reportData.ageBreakdown[age]).map(age => [age, (reportData.ageBreakdown[age] || 0).toString(), `${totalApps > 0 ? (((reportData.ageBreakdown[age] || 0) / totalApps) * 100).toFixed(1) : 0}%`]);
             const ageChartData = ageOrder.filter(age => reportData.ageBreakdown[age]).map(age => ({ label: age, value: reportData.ageBreakdown[age] || 0 }));
             addSection('Age Range Distribution', ageTableData, [['Age Range', 'Count', 'Percentage']], ageChartData);
-
+            
             // 6. Challenge Statement Distribution
             const psCodeBreakdown = reportData.psCodeBreakdown;
             const psTableData = Object.entries(psCodeBreakdown)
+                .filter(([key]) => key !== 'N/A') // Filter out N/A entries for clean display
                 .sort((a, b) => a[0].localeCompare(b[0]))
                 .map(([key, count]) => [key, (count as number).toString(), `${totalApps > 0 ? (((count as number) / totalApps) * 100).toFixed(1) : 0}%`]);
             const psChartData = Object.entries(psCodeBreakdown)
+                .filter(([key]) => key !== 'N/A')
                 .sort((a, b) => a[0].localeCompare(b[0]))
                 .map(([label, value]) => ({ label, value: value as number }));
 

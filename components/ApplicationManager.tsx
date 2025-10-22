@@ -287,6 +287,7 @@ function ApplicationDetailsModal({
   onClose,
   applicationSlug,
   onDetailFetched,
+  config,
 }: {
   isOpen: boolean
   onClose: () => void
@@ -297,13 +298,13 @@ function ApplicationDetailsModal({
   const [application, setApplication] = useState<Application | null>(null)
   const [isLoading, setIsLoading] = useState(false)
   const { toast } = useToast()
-  const config = (window as any).appConfig // Assuming config is globally available or passed via props
 
   useEffect(() => {
     if (isOpen && applicationSlug) {
       const fetchDetails = async () => {
         setIsLoading(true)
         try {
+          // Use the passed config prop
           const appDetails = await getApplicationDetails(config, applicationSlug)
           setApplication(appDetails)
           onDetailFetched(appDetails) // Pass data back to parent
@@ -354,9 +355,7 @@ function ApplicationDetailsModal({
 
 // --- Main Component ---
 export function ApplicationManager({ config }: ApplicationManagerProps) {
-  if (typeof window !== "undefined") {
-    ; (window as any).appConfig = config
-  }
+  // FIX: config is now guaranteed to be available via prop
 
   const [applications, setApplications] = useState<Application[]>([])
   const [isLoading, setIsLoading] = useState(true)
@@ -393,7 +392,12 @@ export function ApplicationManager({ config }: ApplicationManagerProps) {
 
   const [pagination, setPagination] = useState({ currentPage: 1, lastPage: 1, total: 0 })
   const fetchApplications = useCallback(async () => {
-    if (!config.apiKey) return
+  // Check if API key is present before fetching
+    if (!config.apiKey) {
+      setError("API Key is missing. Cannot fetch applications.")
+      setIsLoading(false)
+      return
+    }
     setIsLoading(true)
     setError(null)
     try {
@@ -405,8 +409,10 @@ export function ApplicationManager({ config }: ApplicationManagerProps) {
       setApplications(response.data)
       setPagination({ currentPage: response.current_page, lastPage: response.last_page, total: response.total })
     } catch (err: any) {
-      setError(err.message || "An unexpected error occurred.")
-      toast({ title: "Error", description: "Failed to fetch applications.", variant: "destructive" })
+      // Improved error logging for the user
+      const errorMessage = err.message || "Failed to fetch applications due to an API or network error."
+      setError(errorMessage)
+      toast({ title: "Error", description: errorMessage, variant: "destructive" })
     } finally {
       setIsLoading(false)
     }

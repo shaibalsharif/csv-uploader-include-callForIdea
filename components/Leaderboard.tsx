@@ -686,7 +686,7 @@ export function Leaderboard({ config }: LeaderboardProps) {
                             {isChallengeFilterApplicable && availableChallengeStatements.length > 0 && (
                                 <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5 gap-4">
                                     {isMultiSelect ? (
-                                        <div className="flex flex-col space-y-1 xl:col-span-2">
+                                        <div className="flex flex-col space-y-1 xl:col-span-full">
                                             <label className="text-sm font-medium leading-none">Challenge Statements (Multi-select)</label>
                                             <div className="flex flex-wrap gap-2 p-2 border rounded-md bg-white overflow-y-auto max-h-32">
                                                 <Button

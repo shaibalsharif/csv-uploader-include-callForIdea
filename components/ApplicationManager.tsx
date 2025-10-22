@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useEffect, useCallback, useRef } from "react"
+import { useState, useEffect, useCallback, useRef, useMemo } from "react"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
@@ -35,6 +35,9 @@ import {
   Filter,
   CircleX,
   FileDown,
+  ChevronsLeft,
+  ChevronsRight,
+  ArrowUpDown
 } from "lucide-react"
 import {
   getApplications,
@@ -287,7 +290,7 @@ function ApplicationDetailsModal({
   onClose,
   applicationSlug,
   onDetailFetched,
-  config,
+  config, 
 }: {
   isOpen: boolean
   onClose: () => void
@@ -298,7 +301,7 @@ function ApplicationDetailsModal({
   const [application, setApplication] = useState<Application | null>(null)
   const [isLoading, setIsLoading] = useState(false)
   const { toast } = useToast()
-
+  
   useEffect(() => {
     if (isOpen && applicationSlug) {
       const fetchDetails = async () => {
@@ -353,6 +356,97 @@ function ApplicationDetailsModal({
   )
 }
 
+// --- Pagination Component for Application Manager ---
+interface ManagerPaginationProps {
+    pagination: { currentPage: number, lastPage: number, total: number, perPage: number };
+    changePage: (newPage: number) => void;
+    setPerPage: (perPage: number) => void;
+    isLoading: boolean;
+}
+
+const ManagerPaginationControls: React.FC<ManagerPaginationProps> = ({
+    pagination,
+    changePage,
+    setPerPage,
+    isLoading
+}) => {
+    const { currentPage, lastPage, total, perPage } = pagination;
+
+    const pageNumbers = useMemo(() => {
+        const delta = 2;
+        const range: (number | string)[] = [];
+        
+        for (let i = Math.max(2, currentPage - delta); i <= Math.min(lastPage - 1, currentPage + delta); i++) {
+            range.push(i);
+        }
+
+        if (currentPage - delta > 2) { range.unshift('...'); }
+        if (currentPage + delta < lastPage - 1) { range.push('...'); }
+        
+        if (lastPage > 1) {
+            if (!range.includes(1)) range.unshift(1);
+            if (!range.includes(lastPage)) range.push(lastPage);
+        }
+        
+        return range.filter((p, i) => p !== '...' || range[i - 1] !== '...');
+    }, [currentPage, lastPage]);
+    
+    return (
+        <div className="flex items-center justify-between space-x-2 py-4 flex-wrap">
+            <div className="flex items-center space-x-2">
+                <Select 
+                    value={perPage.toString()} 
+                    onValueChange={(v) => setPerPage(Number(v))} 
+                    disabled={isLoading}
+                >
+                    <SelectTrigger className="w-[120px]"><SelectValue /></SelectTrigger>
+                    <SelectContent>
+                        <SelectItem value="20">20/page</SelectItem>
+                        <SelectItem value="50">50/page</SelectItem>
+                        <SelectItem value="100">100/page</SelectItem>
+                    </SelectContent>
+                </Select>
+                <span className="text-sm text-muted-foreground">
+                    Page {currentPage} of {lastPage} ({total} Total)
+                </span>
+            </div>
+
+            <div className="flex items-center space-x-1">
+                <Button variant="outline" size="icon" onClick={() => changePage(1)} disabled={currentPage <= 1 || isLoading}>
+                    <ChevronsLeft className="h-4 w-4" />
+                </Button>
+                <Button variant="outline" size="icon" onClick={() => changePage(currentPage - 1)} disabled={currentPage <= 1 || isLoading}>
+                    <ChevronLeft className="h-4 w-4" />
+                </Button>
+
+                {pageNumbers.map((page, index) => (
+                    typeof page === 'number' ? (
+                        <Button
+                            key={index}
+                            variant={page === currentPage ? "default" : "outline"}
+                            size="icon"
+                            onClick={() => changePage(page)}
+                            disabled={isLoading}
+                        >
+                            {page}
+                        </Button>
+                    ) : (
+                        <span key={index} className="px-2 text-muted-foreground">...</span>
+                    )
+                ))}
+                
+                <Button variant="outline" size="icon" onClick={() => changePage(currentPage + 1)} disabled={currentPage >= lastPage || isLoading}>
+                    <ChevronRight className="h-4 w-4" />
+                </Button>
+                <Button variant="outline" size="icon" onClick={() => changePage(lastPage)} disabled={currentPage >= lastPage || isLoading}>
+                    <ChevronsRight className="h-4 w-4" />
+                </Button>
+            </div>
+        </div>
+    );
+};
+
+
 // --- Main Component ---
 export function ApplicationManager({ config }: ApplicationManagerProps) {
   // FIX: config is now guaranteed to be available via prop
@@ -390,9 +484,10 @@ export function ApplicationManager({ config }: ApplicationManagerProps) {
     }
   }, [debouncedFilters, params.archived, params.deleted])
 
-  const [pagination, setPagination] = useState({ currentPage: 1, lastPage: 1, total: 0 })
+  const [pagination, setPagination] = useState({ currentPage: 1, lastPage: 1, total: 0, perPage: 20 })
+  
   const fetchApplications = useCallback(async () => {
-  // Check if API key is present before fetching
+    // Check if API key is present before fetching
     if (!config.apiKey) {
       setError("API Key is missing. Cannot fetch applications.")
       setIsLoading(false)
@@ -406,8 +501,16 @@ export function ApplicationManager({ config }: ApplicationManagerProps) {
         tags: debouncedFilters.tags,
       }
       const response = await getApplications(config, params, apiFilters)
-      setApplications(response.data)
-      setPagination({ currentPage: response.current_page, lastPage: response.last_page, total: response.total })
+      
+      // Update perPage in pagination state based on current params
+      setPagination({ 
+        currentPage: response.current_page, 
+        lastPage: response.last_page, 
+        total: response.total, 
+        perPage: params.per_page 
+      });
+      setApplications(response.data);
+
     } catch (err: any) {
       // Improved error logging for the user
       const errorMessage = err.message || "Failed to fetch applications due to an API or network error."
@@ -548,10 +651,16 @@ export function ApplicationManager({ config }: ApplicationManagerProps) {
 
   const renderSortArrow = (column: string) => (params.order === column ? (params.dir === "asc" ? "▲" : "▼") : null)
 
+  // This is the common function used by the new pagination controls
   const changePage = (newPage: number) => {
     if (newPage > 0 && newPage <= pagination.lastPage) {
       setParams((prev) => ({ ...prev, page: newPage }))
     }
+  }
+  
+  // New function for perPage change that also resets page to 1
+  const setPerPage = (newPerPage: number) => {
+      setParams((prev) => ({ ...prev, per_page: newPerPage, page: 1 }));
   }
 
   const handleFilterChange = (field: keyof typeof filters, value: string | string[]) => {
@@ -623,15 +732,7 @@ export function ApplicationManager({ config }: ApplicationManagerProps) {
                 <Filter className="mr-2 h-4 w-4" />
                 {showFilters ? "Hide" : "Show"} Filters
               </Button>
-              <select
-                value={params.per_page}
-                onChange={(e) => setParams((p) => ({ ...p, per_page: Number(e.target.value), page: 1 }))}
-                className="p-1 border rounded bg-background"
-              >
-                <option value={20}>20</option>
-                <option value={50}>50</option>
-                <option value={100}>100</option>
-              </select>
+              {/* Removed old select control here, as it's now part of ManagerPaginationControls */}
             </div>
           </div>
 
@@ -701,6 +802,14 @@ export function ApplicationManager({ config }: ApplicationManagerProps) {
             </Card>
           )}
 
+          {/* NEW: Pagination Controls ABOVE the table */}
+          <ManagerPaginationControls
+            pagination={pagination}
+            changePage={changePage}
+            setPerPage={setPerPage}
+            isLoading={isLoading}
+          />
+          
           <div className="rounded-md border">
             <Table>
               <TableHeader>
@@ -807,27 +916,14 @@ export function ApplicationManager({ config }: ApplicationManagerProps) {
             </Table>
           </div>
 
-          <div className="flex items-center justify-end space-x-2 py-4">
-            <span className="text-sm text-muted-foreground">
-              Page {pagination.currentPage} of {pagination.lastPage} ({pagination.total} items)
-            </span>
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={() => changePage(pagination.currentPage - 1)}
-              disabled={isLoading || pagination.currentPage <= 1}
-            >
-              <ChevronLeft className="h-4 w-4" /> Previous
-            </Button>
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={() => changePage(pagination.currentPage + 1)}
-              disabled={isLoading || pagination.currentPage >= pagination.lastPage}
-            >
-              Next <ChevronRight className="h-4 w-4" />
-            </Button>
-          </div>
+          {/* NEW: Pagination Controls BELOW the table */}
+          <ManagerPaginationControls
+            pagination={pagination}
+            changePage={changePage}
+            setPerPage={setPerPage}
+            isLoading={isLoading}
+          />
+
         </CardContent>
       </Card>
 
@@ -836,7 +932,7 @@ export function ApplicationManager({ config }: ApplicationManagerProps) {
         onClose={() => setIsModalOpen(false)}
         applicationSlug={selectedSlug}
         onDetailFetched={(app) => detailCache.current.set(app.slug, app)}
-        config={config}
+        config={config} 
       />
     </>
   )

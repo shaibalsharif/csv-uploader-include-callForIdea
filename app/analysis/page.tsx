@@ -1,3 +1,5 @@
+// shaibalsharif/csv-uploader-include-callforidea/csv-uploader-include-callForIdea-14a8d21d8fecb34cd17d5142be6dd196d290720c/app/analysis/page.tsx
+
 "use client";
 
 import { useState, useEffect, ReactNode, useRef } from "react";
@@ -133,6 +135,14 @@ const TableGraphic = ({ data }: { data: any[] }) => (
           <TableRow key={`${item.name}-${index}`}>
             <TableCell className="font-medium">
               {item.name}
+              {/* If rawCategoryCounts exists, show the breakdown in the table */}
+              {item.rawCategoryCounts && (
+                <div className="mt-1 text-xs text-muted-foreground">
+                    {Object.entries(item.rawCategoryCounts).sort(([, a], [, b]) => (b as number) - (a as number)).map(([rawName, count]) => (
+                        <p key={rawName}>&mdash; {rawName}: {count}</p>
+                    ))}
+                </div>
+              )}
               {item.translation && (
                 <p className="text-xs text-muted-foreground">{item.translation}</p>
               )}
@@ -156,6 +166,30 @@ const CustomLineChartTooltip = ({ active, payload, label }: any) => {
         <p className="font-bold text-sm">{formatDateWithOrdinal(label)}</p>
         <p className="text-sm text-[#8884d8]">Submissions this day: <strong>{data.createdAtCount} </strong></p>
         <p className="text-sm text-green-400">Updates this day: <strong>{data.updatedAtCount} </strong></p>
+      </div>
+    );
+  }
+  return null;
+};
+
+// NEW: Custom Bar Chart Tooltip for Applicant Category
+const CustomApplicantCategoryTooltip = ({ active, payload, label }: any) => {
+  if (active && payload && payload.length) {
+    const data = payload[0].payload;
+    const rawCounts = data.rawCategoryCounts;
+
+    // Sort by count descending
+    const sortedRawCounts = Object.entries(rawCounts).sort(([, a], [, b]) => (b as number) - (a as number));
+    
+    return (
+      <div className="p-3 bg-background border rounded-md shadow-lg text-sm">
+        <p className="font-bold mb-1">{label} ({data.value})</p>
+        <p className="text-muted-foreground text-xs mb-1">Raw Categories Breakdown:</p>
+        {sortedRawCounts.map(([rawName, count]) => (
+          <p key={rawName} className="text-sm">
+            {rawName}: <strong>{count}</strong>
+          </p>
+        ))}
       </div>
     );
   }
@@ -233,6 +267,7 @@ export default function AnalysisPage() {
         line?: string;
         pies: { id: string; title: string; img: string }[];
         stackedBars: { id: string; title: string; img: string }[];
+        applicantCategory?: string; // NEW
       } = {
         pies: [],
         stackedBars: []
@@ -241,6 +276,13 @@ export default function AnalysisPage() {
       // 1. Capture Line Chart
       const lineChartCanvas = await html2canvas(document.getElementById('line-chart-export')!, { scale: 2 });
       chartImages.line = lineChartCanvas.toDataURL('image/png');
+
+      // NEW: Capture Applicant Category Chart for Export
+      const applicantCategoryChartCanvas = document.getElementById('applicant-category-export');
+      if (applicantCategoryChartCanvas) {
+        const canvas = await html2canvas(applicantCategoryChartCanvas as HTMLElement, { scale: 2 });
+        chartImages.applicantCategory = canvas.toDataURL('image/png');
+      }
 
       // 2. Capture Pie Charts
       const pieChartContainer = document.getElementById('pie-charts-export')!;
@@ -278,6 +320,7 @@ export default function AnalysisPage() {
           psCodeData: data.psCodeData,
           ageRangeData: data.ageRangeData,
           genderData: data.genderData,
+          applicantCategoryData: data.applicantCategoryData, // Data now contains rawCategoryCounts for PDF table
           lastSyncTime: data.lastSyncTime,
           chartImages: chartImages
         }),
@@ -393,12 +436,25 @@ export default function AnalysisPage() {
                   <YAxis allowDecimals={false} />
                   <Tooltip content={<CustomLineChartTooltip />} />
                   <Legend />
-                  <Line type="monotone" dataKey="count" stroke="#8884d8" activeDot={{ r: 8 }} name="Submissions" strokeWidth={3} />
+                  <Line type="monotone" dataKey="createdAtCount" stroke="#8884d8" activeDot={{ r: 8 }} name="Online Submissions" strokeWidth={3} />
+                  <Line type="monotone" dataKey="updatedAtCount" stroke="#82ca9d" activeDot={{ r: 8 }} name="Offline Updates" strokeWidth={3} />
                 </LineChart>
               </ResponsiveContainer>
             </CardContent>
           </Card>
         </div>
+        
+        {/* NEW: Applicant Category Chart for Export (with the same data structure as the UI chart) */}
+        <div id="applicant-category-export" style={{ width: '400px', height: '300px', padding: '10px' }}>
+            <BarChart data={data?.applicantCategoryData} layout="vertical" margin={{ top: 5, right: 20, left: 10, bottom: 5 }}>
+                <CartesianGrid strokeDasharray="3 3" />
+                <XAxis type="number" allowDecimals={false} />
+                <YAxis type="category" dataKey="name" width={120} />
+                <Tooltip />
+                <Bar dataKey="value" fill={COLORS[0]} name="Applications" />
+            </BarChart>
+        </div>
+
         <div id="pie-charts-export" style={{ width: '800px', display: 'flex', flexWrap: 'wrap' }}>
           <div style={{ width: '50%', height: '400px', padding: '10px' }} data-id="category" data-title="Division by Category" className="pie-chart-export">
             <PieChartGraphic data={data?.categoryPieData} />
@@ -537,6 +593,24 @@ export default function AnalysisPage() {
                 chartComponent={<PieChartGraphic data={data.psCodeData} tooltipFormatter={psCodeTooltipFormatter} />}
                 tableComponent={<TableGraphic data={data.psCodeData} />}
               />
+              
+              {/* NEW: Applicant Category Distribution Card */}
+              <FlippableCard
+                title="Division by Applicant Category"
+                chartComponent={
+                  <ResponsiveContainer width="100%" height="100%">
+                    <BarChart data={data.applicantCategoryData} layout="vertical" margin={{ top: 5, right: 20, left: 10, bottom: 5 }}>
+                      <CartesianGrid strokeDasharray="3 3" />
+                      <XAxis type="number" allowDecimals={false} />
+                      <YAxis type="category" dataKey="name" width={120} />
+                      <Tooltip content={CustomApplicantCategoryTooltip} /> {/* ADDED CUSTOM TOOLTIP */}
+                      <Bar dataKey="value" fill={COLORS[0]} name="Applications" />
+                    </BarChart>
+                  </ResponsiveContainer>
+                }
+                tableComponent={<TableGraphic data={data.applicantCategoryData} />}
+              />
+              
               <FlippableCard
                 title="Division by Age Range"
                 chartComponent={<PieChartGraphic data={data.ageRangeData} />}

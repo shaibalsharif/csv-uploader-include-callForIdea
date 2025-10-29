@@ -1,3 +1,5 @@
+// shaibalsharif/csv-uploader-include-callforidea/csv-uploader-include-callForIdea-14a8d21d8fecb34cd17d5142be6dd196d290720c/components/ScoreAnalyticsCard.tsx
+
 "use client";
 
 import { useMemo, useState, useRef, useCallback, Ref } from 'react';
@@ -7,7 +9,6 @@ import { Button } from '@/components/ui/button';
 import { Loader2 } from 'lucide-react';
 import type { AnalyticsLeaderboardEntry } from '@/actions/leaderboard';
 import type { FilteredAppRawData } from '@/components/LeaderboardBreakdowns';
-import { SunburstAnalyticsCard } from './SunburstAnalyticsCard';
 
 // --- Type Definitions ---
 interface ScoreAnalyticsCardProps {
@@ -35,6 +36,15 @@ const SCORE_THRESHOLDS = {
     LT_4: (score: number) => score < 4,
 };
 
+// NEW HELPER FUNCTION
+const normalizeApplicantCategory = (value: string): string => {
+    const v = value.toLowerCase();
+    if (v.includes('academia')) return 'Education Institute';
+    if (v.includes('municipal administration') || v.includes('private organization') || v.includes('civil society') || v.includes('ngo/ingo')) return 'Institution';
+    return 'Individual';
+};
+
+
 // --- Helper Functions ---
 const extractFieldValue = (app: FilteredAppRawData, slug: string): string => (app.raw_fields.find((f: any) => f.slug === slug)?.translated?.en_GB || app.raw_fields.find((f: any) => f.slug === slug)?.value?.en_GB || String(app.raw_fields.find((f: any) => f.slug === slug)?.value).split(" - [")[0].trim() || "N/A");
 const abbreviateAgeLabel = (label: string): string => label.toLowerCase().includes('below 18') ? '< 18' : label.toLowerCase().includes('above 65') ? '> 65' : label.replace(/\s*years\s*/, '-years').replace(/\s/g, '').replace(/^-/, '').trim();
@@ -52,7 +62,7 @@ const extractPsCodeAndLabel = (app: FilteredAppRawData, possibleSlugs: string[])
 const useAnalyticsData = (leaderboard: AnalyticsLeaderboardEntry[], filteredApps: FilteredAppRawData[]) => {
     return useMemo(() => {
         const total = leaderboard.length;
-        if (total === 0) return { overallData: [], genderData: [], ageData: [], categoryData: [], municipalCountData: [], municipalScoreData: [], challengeData: [] };
+        if (total === 0) return { overallData: [], genderData: [], ageData: [], categoryData: [], municipalCountData: [], municipalScoreData: [], challengeData: [], applicantCategoryData: [] };
 
         const scoreCounts = {
             SCORE_6: leaderboard.filter(e => SCORE_THRESHOLDS.SCORE_6(e.totalScore)).length,
@@ -62,7 +72,11 @@ const useAnalyticsData = (leaderboard: AnalyticsLeaderboardEntry[], filteredApps
         };
         const overallData = (['SCORE_6', 'GTE_5', 'GTE_4', 'LT_4'] as ScoreCategory[]).map(key => ({ id: key, label: `Score ${key.replace('_', ' ').replace('GTE', '≥').replace('LT', '<')}`, value: scoreCounts[key], percentage: ((scoreCounts[key] / total) * 100).toFixed(1) }));
 
-        const createBreakdown = (extractor: (app: FilteredAppRawData) => string) => filteredApps.reduce((acc, app) => { const key = extractor(app); if (key !== 'N/A') { acc[key] = (acc[key] || 0) + 1; } return acc; }, {} as Record<string, number>);
+        const createBreakdown = (extractor: (app: FilteredAppRawData) => string) => filteredApps.reduce((acc, app) => { 
+            const key = extractor(app); 
+            if (key !== 'N/A') { acc[key] = (acc[key] || 0) + 1; } 
+            return acc; 
+        }, {} as Record<string, number>);
         const toChartData = (data: Record<string, number>) => Object.entries(data).map(([name, value]) => ({ name, value }));
 
         const municipalMap = leaderboard.reduce((acc, entry) => {
@@ -74,10 +88,37 @@ const useAnalyticsData = (leaderboard: AnalyticsLeaderboardEntry[], filteredApps
         }, {} as Record<string, { total: number } & Record<ScoreCategory, number>>);
 
         const challengeStatementSlugs = ['gkknPnQp', 'jDJaNYGG', 'RjAnzBZJ', 'OJBPQyGP'];
+        
+        const APPLICANT_CATEGORY_SLUG = 'JvKDGVwE';
+
+        // MODIFIED: Applicant Category Breakdown to include raw categories for the tooltip/report
+        const applicantCategoryData = (() => {
+            const aggregated = filteredApps.reduce((acc, app) => {
+                const rawKey = extractFieldValue(app, APPLICANT_CATEGORY_SLUG);
+                const normalizedKey = normalizeApplicantCategory(rawKey);
+
+                if (rawKey === 'N/A') return acc;
+
+                if (!acc[normalizedKey]) {
+                    acc[normalizedKey] = { value: 0, rawCategoryCounts: {} as Record<string, number> };
+                }
+
+                acc[normalizedKey].value++;
+                acc[normalizedKey].rawCategoryCounts[rawKey] = (acc[normalizedKey].rawCategoryCounts[rawKey] || 0) + 1;
+                
+                return acc;
+            }, {} as Record<string, { value: number, rawCategoryCounts: Record<string, number> }>);
+
+            return Object.entries(aggregated)
+                .map(([name, data]) => ({ name, ...data }))
+                .sort((a, b) => b.value - a.value);
+        })();
+
 
         return {
             overallData,
             genderData: toChartData(createBreakdown(app => extractFieldValue(app, 'rojNQzOz'))).sort((a, b) => b.value - a.value),
+            applicantCategoryData, // UPDATED STRUCTURE
             ageData: toChartData(createBreakdown(app => abbreviateAgeLabel(extractFieldValue(app, 'xjzONPwj')))).sort((a, b) => a.name.localeCompare(b.name)),
             categoryData: toChartData(createBreakdown(app => app.category?.name?.en_GB || 'Uncategorized')).sort((a, b) => b.value - a.value),
             municipalCountData: Object.entries(municipalMap).map(([muni, data]) => ({ municipality: muni, count: data.total })).sort((a, b) => b.count - a.count),
@@ -111,12 +152,12 @@ const GenderPieChart = ({ data }: { data: { name: string; value: number }[] }) =
 
 // --- Main Component ---
 export function ScoreAnalyticsCard({ leaderboard, municipalityFilter, isLoading, scoreSetName, filteredApps, skipScoreDistribution }: ScoreAnalyticsCardProps) {
-    const { overallData, genderData, ageData, categoryData, municipalCountData, municipalScoreData, challengeData } = useAnalyticsData(leaderboard, filteredApps);
+    const { overallData, genderData, ageData, categoryData, municipalCountData, municipalScoreData, challengeData, applicantCategoryData } = useAnalyticsData(leaderboard, filteredApps);
 
     const refs = {
         overall: useRef<HTMLDivElement>(null), gender: useRef<HTMLDivElement>(null), category: useRef<HTMLDivElement>(null),
         age: useRef<HTMLDivElement>(null), muniCount: useRef<HTMLDivElement>(null), muniScore: useRef<HTMLDivElement>(null),
-        challenge: useRef<HTMLDivElement>(null),
+        challenge: useRef<HTMLDivElement>(null), applicantCategory: useRef<HTMLDivElement>(null),
     };
 
     const ChartCard = ({ title, chartRef, children }: { title: string; chartRef: Ref<HTMLDivElement>; children: React.ReactNode; }) => (
@@ -136,11 +177,7 @@ export function ScoreAnalyticsCard({ leaderboard, municipalityFilter, isLoading,
                 <CardDescription>Filter: <span className="font-semibold">{municipalityFilter === 'all' ? 'All' : municipalityFilter}</span> | Apps: <span className="font-semibold">{leaderboard.length}</span></CardDescription>
             </CardHeader></Card>
             <div className="grid gap-6 md:grid-cols-2 xl:grid-cols-3">
-                <SunburstAnalyticsCard
-                    filteredApps={filteredApps}
-                    isLoading={isLoading}
-                    municipalityFilter={municipalityFilter} // PASS THE FILTER HERE
-                />
+                
                 {/* 1. Overall Score Distribution (CONDITIONAL RENDERING) */}
                 {!skipScoreDistribution && overallData.length > 0 && (
                     <ChartCard title="Overall Score Distribution" chartRef={refs.overall}>
@@ -157,6 +194,11 @@ export function ScoreAnalyticsCard({ leaderboard, municipalityFilter, isLoading,
                 <ChartCard title="Category (Digital/Non-Digital)" chartRef={refs.category}><div className="h-[250px]"><ResponsiveContainer width="100%" height="100%">
                     <PieChart><Pie data={categoryData} dataKey="value" nameKey="name" cx="50%" cy="50%" outerRadius={80} labelLine={false} label={({ cx, cy, midAngle, innerRadius, outerRadius, percent }) => { const r = innerRadius + (outerRadius - innerRadius) * 0.5; const x = cx + r * Math.cos(-midAngle * Math.PI / 180); const y = cy + r * Math.sin(-midAngle * Math.PI / 180); return <text x={x} y={y} fill="white" textAnchor="middle" dominantBaseline="central">{`${(percent * 100).toFixed(0)}%`}</text>; }}>{categoryData.map((_, i) => <Cell key={`c-${i}`} fill={COLORS.CATEGORY[i % COLORS.CATEGORY.length]} />)}</Pie><Tooltip /><Legend /></PieChart>
                 </ResponsiveContainer></div></ChartCard>
+                 {/* NEW: Applicant Category Chart - Renders BarChart, tooltip logic is in parent page */}
+                <ChartCard title="Applicant Category" chartRef={refs.applicantCategory}><div className="h-[250px]"><ResponsiveContainer width="100%" height="100%">
+                    <BarChart data={applicantCategoryData} layout="vertical" margin={{ left: 20 }}><CartesianGrid strokeDasharray="3 3" /><XAxis type="number" allowDecimals={false} /><YAxis type="category" dataKey="name" width={120} /><Tooltip /><Bar dataKey="value" name="Apps" fill={COLORS.MUNI_COUNT} /></BarChart>
+                </ResponsiveContainer></div></ChartCard>
+
                 <div className="md:col-span-2 xl:col-span-3"><ChartCard title="Age Range Distribution" chartRef={refs.age}><div className="h-[300px]"><ResponsiveContainer width="100%" height="100%">
                     <BarChart data={ageData} layout="vertical" margin={{ left: 20 }}><CartesianGrid strokeDasharray="3 3" /><XAxis type="number" allowDecimals={false} /><YAxis type="category" dataKey="name" width={80} /><Tooltip /><Bar dataKey="value" name="Apps" fill={COLORS.MUNI_COUNT} /></BarChart>
                 </ResponsiveContainer></div></ChartCard></div>

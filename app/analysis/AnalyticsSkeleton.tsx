@@ -1,3 +1,5 @@
+// shaibalsharif/csv-uploader-include-callforidea/csv-uploader-include-callForIdea-14a8d21d8fecb34cd17d5142be6dd196d290720c/app/analysis/AnalyticsSkeleton.tsx
+
 "use client";
 
 import { Card, CardContent, CardHeader } from "@/components/ui/card";
@@ -42,6 +44,24 @@ export function AnalyticsSkeleton() {
       </Card>
       
        <div className="grid gap-6 lg:grid-cols-2">
+        <Card>
+          <CardHeader><Skeleton className="h-6 w-1/3" /></CardHeader>
+          <CardContent><Skeleton className="h-[350px] w-full" /></CardContent>
+        </Card>
+        <Card>
+          <CardHeader><Skeleton className="h-6 w-1/3" /></CardHeader>
+          <CardContent><Skeleton className="h-[350px] w-full" /></CardContent>
+        </Card>
+        {/* Skeleton for Applicant Category Distribution Card */}
+        <Card>
+          <CardHeader><Skeleton className="h-6 w-1/3" /></CardHeader>
+          <CardContent><Skeleton className="h-[350px] w-full" /></CardContent>
+        </Card>
+        {/* Placeholder for symmetric layout */}
+        <Card>
+          <CardHeader><Skeleton className="h-6 w-1/3" /></CardHeader>
+          <CardContent><Skeleton className="h-[350px] w-full" /></CardContent>
+        </Card>
         <Card>
           <CardHeader><Skeleton className="h-6 w-1/3" /></CardHeader>
           <CardContent><Skeleton className="h-[350px] w-full" /></CardContent>

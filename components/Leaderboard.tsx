@@ -22,8 +22,7 @@ import { ApplicationDetailsInquiryModal } from './ApplicationDetailsInquiryModal
 import { ScoreAnalyticsCard } from './ScoreAnalyticsCard';
 import { LeaderboardBreakdowns, FilteredAppRawData } from './LeaderboardBreakdowns';
 import { GenerateReportButton } from './GenerateReportButton';
-
-
+import { SunburstAnalyticsCard } from './SunburstAnalyticsCard'; // ADD NEW IMPORT HERE
 type SortableKeys = 'title' | 'total_score';
 
 interface ScoreSet {
@@ -733,6 +732,8 @@ export function Leaderboard({ config }: LeaderboardProps) {
                                 </div>
                             )}
                         </div>
+                       
+                       
                         <ScoreAnalyticsCard
                             leaderboard={filteredApps as unknown as AnalyticsLeaderboardEntry[]}
                             municipalityFilter={debouncedMunicipalityFilter}

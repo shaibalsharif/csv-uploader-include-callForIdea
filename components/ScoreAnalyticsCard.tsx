@@ -7,6 +7,7 @@ import { Button } from '@/components/ui/button';
 import { Loader2 } from 'lucide-react';
 import type { AnalyticsLeaderboardEntry } from '@/actions/leaderboard';
 import type { FilteredAppRawData } from '@/components/LeaderboardBreakdowns';
+import { SunburstAnalyticsCard } from './SunburstAnalyticsCard';
 
 // --- Type Definitions ---
 interface ScoreAnalyticsCardProps {
@@ -135,7 +136,11 @@ export function ScoreAnalyticsCard({ leaderboard, municipalityFilter, isLoading,
                 <CardDescription>Filter: <span className="font-semibold">{municipalityFilter === 'all' ? 'All' : municipalityFilter}</span> | Apps: <span className="font-semibold">{leaderboard.length}</span></CardDescription>
             </CardHeader></Card>
             <div className="grid gap-6 md:grid-cols-2 xl:grid-cols-3">
-                
+                <SunburstAnalyticsCard
+                    filteredApps={filteredApps}
+                    isLoading={isLoading}
+                    municipalityFilter={municipalityFilter} // PASS THE FILTER HERE
+                />
                 {/* 1. Overall Score Distribution (CONDITIONAL RENDERING) */}
                 {!skipScoreDistribution && overallData.length > 0 && (
                     <ChartCard title="Overall Score Distribution" chartRef={refs.overall}>

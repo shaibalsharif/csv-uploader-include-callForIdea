@@ -3,7 +3,7 @@
 import { useState } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { Menu, X, Upload, History, XCircle, Users, Trophy, Copy, BarChart } from "lucide-react"; // Imported BarChart
+import { Menu, X, Upload, History, XCircle, Users, Trophy, Copy, BarChart, ChartNoAxesCombined } from "lucide-react"; // Imported BarChart
 
 import { Button } from "@/components/ui/button";
 import { Sheet, SheetContent, SheetTrigger } from "@/components/ui/sheet";
@@ -22,6 +22,7 @@ const navItems: NavItem[] = [
     { href: "/failed", label: "Failed Submissions", icon: XCircle },
     { href: "/manage", label: "Manage Applications", icon: Users },
     { href: "/leaderboard", label: "Leaderboard", icon: Trophy },
+    // { href: "/scoring-analysis", label: "Scoring Analysis", icon: ChartNoAxesCombined }, // ADDED NEW NAV ITEM
     { href: "/analysis", label: "Analysis", icon: BarChart }, // ADDED: Analysis Page
     { href: "/duplicates", label: "Find Duplicates", icon: Copy },
 ];

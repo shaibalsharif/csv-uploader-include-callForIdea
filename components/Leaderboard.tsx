@@ -10,7 +10,7 @@ import { Skeleton } from "./ui/skeleton";
 import { Input } from "./ui/input";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "./ui/tooltip";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "./ui/tabs";
-import { RefreshCw, Trophy, AlertCircle, ChevronLeft, ChevronRight, ArrowUpDown, Tag, Search, Eye, MapPin, Loader2, Download, ScrollText, ChevronsLeft, ChevronsRight } from 'lucide-react';
+import { RefreshCw, Trophy, AlertCircle, ChevronLeft, ChevronRight, ArrowUpDown, Tag, Search, Eye, MapPin, Loader2, Download, ScrollText, ChevronsLeft, ChevronsRight, ChartNoAxesCombined } from 'lucide-react';
 import { getLeaderboardPage, getScoreSets, syncLeaderboard, syncAllLeaderboards, getMunicipalities, getChallengeStatements, LeaderboardEntry, ScoreBreakdown, AnalyticsLeaderboardEntry, getAllLeaderboardDataForAnalytics } from '../actions/leaderboard';
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from './ui/alert-dialog';
 import type { AppRawData } from '../actions/analysis';
@@ -23,6 +23,7 @@ import { ScoreAnalyticsCard } from './ScoreAnalyticsCard';
 import { LeaderboardBreakdowns, FilteredAppRawData } from './LeaderboardBreakdowns';
 import { GenerateReportButton } from './GenerateReportButton';
 import { SunburstAnalyticsCard } from './SunburstAnalyticsCard'; // ADDED: Import SunburstAnalyticsCard
+import Link from 'next/link';
 
 
 type SortableKeys = 'title' | 'total_score';
@@ -455,7 +456,15 @@ export function Leaderboard({ config }: LeaderboardProps) {
             <CardHeader>
                 <div className="md:flex justify-between items-start">
                     <div>
-                        <CardTitle className="flex items-center gap-2"><Trophy className="w-6 h-6" /> Leaderboard & Analytics</CardTitle>
+                        <div className='flex items-center gap-2'>
+                            <CardTitle className="flex items-center gap-2"><Trophy className="w-6 h-6" /> Leaderboard & Analytics</CardTitle>
+                        <Link href={"/scoring-analysis"}><Button variant="destructive" >
+
+                            <ChartNoAxesCombined className="mr-2 h-4 w-4" />Scoring Analysis
+                        </Button></Link>
+
+                        </div>
+                        
                         <CardDescription>Analyze and manage applications synchronized from GoodGrants.</CardDescription>
                     </div>
                     <div className="flex items-center gap-2 mt-4 md:mt-0 flex-wrap">

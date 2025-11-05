@@ -335,7 +335,7 @@ const ReviewerPanel = ({ data }: { data: AggregatedData }) => {
                 <CardHeader><CardTitle>Select Reviewer for Breakdown</CardTitle></CardHeader>
                 <CardContent>
                     <ScrollArea className="h-40 w-full whitespace-nowrap">
-                        <div className="flex space-x-3 pb-4">
+                        <div className="flex space-x-3 pb-4 flex-wrap gap-2 ">
                             {reviewerOptions.map(r => (
                                 <InfoTooltip 
                                     key={r.email} 

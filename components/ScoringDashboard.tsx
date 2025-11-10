@@ -10,10 +10,10 @@ import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContaine
 import { AggregatedData } from '@/lib/scoring-utils';
 import { Zap, Users, LayoutList, Eye, CheckCircle, Info } from "lucide-react";
 import { Label } from "@/components/ui/label";
-import { Tooltip as UiTooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip'; 
-import { ApplicationDetailsInquiryModal } from "./ApplicationDetailsInquiryModal"; 
-import { cn } from '@/lib/utils'; 
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'; 
+import { Tooltip as UiTooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
+import { ApplicationDetailsInquiryModal } from "./ApplicationDetailsInquiryModal";
+import { cn } from '@/lib/utils';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 
 
 interface ScoringDashboardProps {
@@ -43,7 +43,7 @@ const CustomBarTooltip = ({ active, payload, label }: any) => {
     if (active && payload && payload.length) {
         const name = payload[0].name || payload[0].dataKey;
         const value = payload[0].value;
-        const labelText = label || payload[0].payload.title; 
+        const labelText = label || payload[0].payload.title;
 
         return (
             <div className="p-2 bg-background border rounded-md shadow-lg text-sm">
@@ -73,9 +73,9 @@ const CustomRadarTooltip = ({ active, payload, label }: any) => {
 
 const CustomLineTooltip = ({ active, payload, label }: any) => {
     if (active && payload && payload.length) {
-        const appInfo = payload[0].payload.appData; 
+        const appInfo = payload[0].payload.appData;
         const score = payload[0].value.toFixed(2);
-        
+
         return (
             <div className="p-2 bg-background border rounded-md shadow-lg text-sm">
                 <p className="font-bold mb-1">Score: {score} (out of {appInfo.score_set_name === ELIGIBILITY_SET_NAME ? 6 : 5})</p>
@@ -90,25 +90,25 @@ const CustomLineTooltip = ({ active, payload, label }: any) => {
 };
 
 const ScoreBreakdownTooltip = ({ appData, reviewerEmail }: { appData: any, reviewerEmail: string }) => {
-     const reviewerData = appData.reviewers[reviewerEmail];
-     
-     if (!reviewerData) return <div className="text-sm text-muted-foreground">No criteria scored by this reviewer.</div>;
-     
-     const displayMax = appData.score_set_name === ELIGIBILITY_SET_NAME ? 6 : 5;
+    const reviewerData = appData.reviewers[reviewerEmail];
+
+    if (!reviewerData) return <div className="text-sm text-muted-foreground">No criteria scored by this reviewer.</div>;
+
+    const displayMax = appData.score_set_name === ELIGIBILITY_SET_NAME ? 6 : 5;
 
 
-     const criteriaBreakdown = Object.entries(appData.criteria).map(([name, data]: [string, any]) => {
-         const avgScore = appData.criteriaAverages[name] || 0;
-         
-         return {
-             name,
-             score: avgScore.toFixed(2),
-             rawValue: data.sumScore,
-             maxScore: data.sumMax,
-         };
-     }).sort((a, b) => b.score.localeCompare(a.score));
+    const criteriaBreakdown = Object.entries(appData.criteria).map(([name, data]: [string, any]) => {
+        const avgScore = appData.criteriaAverages[name] || 0;
 
-     return (
+        return {
+            name,
+            score: avgScore.toFixed(2),
+            rawValue: data.sumScore,
+            maxScore: data.sumMax,
+        };
+    }).sort((a, b) => b.score.localeCompare(a.score));
+
+    return (
         <div className="p-2 bg-background border max-w-sm rounded-md shadow-lg text-sm">
             <p className="font-bold mb-2">Criteria Breakdown (Normalized to {displayMax})</p>
             <div className="max-h-40 overflow-y-auto pr-2">
@@ -133,15 +133,15 @@ const OverviewPanel = ({ data }: { data: AggregatedData }) => {
     const isEligibility = Object.values(data.apps).some(a => a.score_set_name === ELIGIBILITY_SET_NAME);
     const displayMax = isEligibility ? 6 : 5;
     const maxLabel = `out-of-${displayMax}`;
-    
-    const MAX_APPLICATIONS = 42; 
+
+    const MAX_APPLICATIONS = 42;
     const topAppsData = useMemo(() => {
         return Object.values(apps)
             .map(a => ({ id: a.id, title: a.title, avg: a.finalAverage || 0 }))
             .sort((a, b) => b.avg - a.avg)
             .slice(0, MAX_APPLICATIONS);
     }, [apps]);
-    
+
     const reviewerAveragesData = useMemo(() => {
         return Object.values(reviewers)
             .map(r => ({ name: r.name || r.email, avg: r.avgReviewerScore || 0 }))
@@ -156,7 +156,7 @@ const OverviewPanel = ({ data }: { data: AggregatedData }) => {
             value,
         }));
     }, [apps, topAppsData]);
-    
+
     const maxCriteriaValue = Math.max(displayMax, ...Object.values(topAppCriteriaData).map((d: any) => d.value));
 
     return (
@@ -168,7 +168,7 @@ const OverviewPanel = ({ data }: { data: AggregatedData }) => {
                         <div className="text-xl font-bold">{summary.totalApps}</div>
                     </div>
                 </InfoTooltip>
-                
+
                 <InfoTooltip content="The total number of unique reviewers who submitted scores in the current score set.">
                     <div className="flex flex-col gap-1.5 p-3 rounded-lg border cursor-help">
                         <div className="text-xs text-muted-foreground flex items-center gap-1"><Users className="w-3 h-3" /> Reviewers</div>
@@ -182,10 +182,10 @@ const OverviewPanel = ({ data }: { data: AggregatedData }) => {
                         <div className="text-xl font-bold">{summary.avgRawScore || '—'}</div>
                     </div>
                 </InfoTooltip>
-                
+
                 <InfoTooltip content={`The aggregate average of all final application scores, normalized to the standard ${displayMax}.0 scale (average of all reviewer's final scores for each app).`}>
                     <div className="flex flex-col gap-1.5 p-3 rounded-lg border bg-primary/10 cursor-help">
-                        <div className="text-xs text-muted-foreground">Avg Final ({maxLabel})</div> 
+                        <div className="text-xs text-muted-foreground">Avg Final ({maxLabel})</div>
                         <div className="text-xl font-bold text-primary">{summary.avgFinalScore || '—'}</div>
                     </div>
                 </InfoTooltip>
@@ -201,18 +201,18 @@ const OverviewPanel = ({ data }: { data: AggregatedData }) => {
                 </CardHeader>
                 <CardContent className="h-96">
                     <ScrollArea className="w-full">
-                        <div style={{ width: `${Math.max(1000, topAppsData.length * 30)}px`, height: '350px' }}> 
+                        <div style={{ width: `${Math.max(1000, topAppsData.length * 30)}px`, height: '350px' }}>
                             <ResponsiveContainer width="100%" height="100%">
                                 <BarChart data={topAppsData} margin={{ left: 10, right: 10, top: 10, bottom: 0 }}>
                                     <CartesianGrid strokeDasharray="3 3" />
-                                    <YAxis domain={[0, displayMax]} allowDecimals={false} /> 
-                                    <XAxis 
-                                        dataKey="title" 
-                                        interval={0} 
-                                        angle={-90} 
-                                        textAnchor="end" 
-                                        height={100} 
-                                        tick={{ fontSize: 8 }} 
+                                    <YAxis domain={[0, displayMax]} allowDecimals={false} />
+                                    <XAxis
+                                        dataKey="title"
+                                        interval={0}
+                                        angle={-90}
+                                        textAnchor="end"
+                                        height={100}
+                                        tick={{ fontSize: 8 }}
                                         tickFormatter={(tick) => tick.substring(0, 15) + '...'}
                                     />
                                     <Tooltip content={<CustomBarTooltip />} />
@@ -257,14 +257,14 @@ const OverviewPanel = ({ data }: { data: AggregatedData }) => {
                     </CardHeader>
                     <CardContent className="h-80">
                         <ResponsiveContainer width="100%" height="100%">
-                             <BarChart data={reviewerAveragesData} layout="vertical" margin={{ left: 10, right: 10, top: 10, bottom: 0 }}>
+                            <BarChart data={reviewerAveragesData} layout="vertical" margin={{ left: 10, right: 10, top: 10, bottom: 0 }}>
                                 <CartesianGrid strokeDasharray="3 3" />
-                                <XAxis type="number" domain={[0, displayMax]} allowDecimals={false} /> 
-                                <YAxis 
-                                    type="category" 
-                                    dataKey="name" 
-                                    width={100} 
-                                    tickFormatter={(tick) => tick.split(" ")[0]} 
+                                <XAxis type="number" domain={[0, displayMax]} allowDecimals={false} />
+                                <YAxis
+                                    type="category"
+                                    dataKey="name"
+                                    width={100}
+                                    tickFormatter={(tick) => tick.split(" ")[0]}
                                     tick={{ fontSize: 10 }}
                                 />
                                 <Tooltip content={CustomBarTooltip} />
@@ -280,13 +280,13 @@ const OverviewPanel = ({ data }: { data: AggregatedData }) => {
 
 const ReviewerPanel = ({ data }: { data: AggregatedData }) => {
     const { reviewers, apps } = data;
-    const reviewerOptions = useMemo(() => 
+    const reviewerOptions = useMemo(() =>
         Object.values(reviewers)
-              .filter(r => r.countApps > 0)
-              .sort((a, b) => (b.avgReviewerScore || 0) - (a.avgReviewerScore || 0)), 
+            .filter(r => r.countApps > 0)
+            .sort((a, b) => (b.avgReviewerScore || 0) - (a.avgReviewerScore || 0)),
         [reviewers]
     );
-    
+
     const [selectedReviewerEmail, setSelectedReviewerEmail] = useState<string | null>(null);
     const [isModalOpen, setIsModalOpen] = useState(false);
     const [selectedAppSlug, setSelectedAppSlug] = useState<string | null>(null);
@@ -296,32 +296,32 @@ const ReviewerPanel = ({ data }: { data: AggregatedData }) => {
     }
 
     const selectedReviewer = reviewers[selectedReviewerEmail || ''] || null;
-    
+
     // Determine dynamic max score and label
     const firstApp = Object.values(apps)[0] || {};
     const isEligibility = firstApp.score_set_name === ELIGIBILITY_SET_NAME;
     const displayMax = isEligibility ? 6 : 5;
     const maxLabel = `out-of-${displayMax}`;
-    
+
     const reviewerAppData = useMemo(() => {
         if (!selectedReviewer) return [];
         return Object.entries(selectedReviewer.appScores)
-            .map(([appId, score]) => ({ 
-                appId, 
-                score, 
+            .map(([appId, score]) => ({
+                appId,
+                score,
                 title: apps[appId]?.title || `App ${appId}`,
-                appData: apps[appId], 
+                appData: apps[appId],
                 reviewerName: selectedReviewer.name,
                 reviewerEmail: selectedReviewer.email,
                 application_slug: (apps[appId] as any)?.application_slug || appId,
             }))
             .sort((a, b) => b.score - a.score);
     }, [selectedReviewer, apps]);
-    
+
     const handlePreview = (appId: string) => {
         const app = reviewerAppData.find(a => a.appId === appId);
         if (app) {
-            setSelectedAppSlug(app.application_slug); 
+            setSelectedAppSlug(app.application_slug);
             setIsModalOpen(true);
         }
     }
@@ -330,18 +330,18 @@ const ReviewerPanel = ({ data }: { data: AggregatedData }) => {
     return (
         <div className="space-y-6 flex flex-col h-full">
             <ApplicationDetailsInquiryModal isOpen={isModalOpen} onClose={() => setIsModalOpen(false)} applicationSlug={selectedAppSlug} />
-            
+
             <Card>
                 <CardHeader><CardTitle>Select Reviewer for Breakdown</CardTitle></CardHeader>
                 <CardContent>
                     <ScrollArea className="h-40 w-full whitespace-nowrap">
                         <div className="flex space-x-3 pb-4 flex-wrap gap-2 ">
                             {reviewerOptions.map(r => (
-                                <InfoTooltip 
-                                    key={r.email} 
+                                <InfoTooltip
+                                    key={r.email}
                                     content={`Average score: ${r.avgReviewerScore?.toFixed(2) || 'N/A'}/${displayMax}.00 over ${r.countApps} applications.`}
                                 >
-                                    <Button 
+                                    <Button
                                         variant={selectedReviewerEmail === r.email ? "default" : "outline"}
                                         onClick={() => handleReviewerClick(r.email)}
                                         className={cn(
@@ -372,7 +372,7 @@ const ReviewerPanel = ({ data }: { data: AggregatedData }) => {
                         </CardDescription>
                     </CardHeader>
                     <CardContent className="space-y-6 flex flex-col h-full">
-                        
+
                         <Card>
                             <CardHeader>
                                 <InfoTooltip content={`A visualization of the reviewer's score (${maxLabel}) for each application they assessed, revealing any trends or outliers in their scoring behavior.`}>
@@ -386,14 +386,14 @@ const ReviewerPanel = ({ data }: { data: AggregatedData }) => {
                                     <LineChart data={reviewerAppData} margin={{ left: 10, top: 10, right: 10, bottom: 0 }}>
                                         <CartesianGrid strokeDasharray="3 3" />
                                         <YAxis domain={[0, displayMax]} allowDecimals={false} />
-                                        <XAxis 
-                                            dataKey="appId" 
-                                            tickFormatter={(id) => `ID ${id}`} 
-                                            interval="preserveStartEnd" 
-                                            angle={-15} 
-                                            textAnchor="end" 
+                                        <XAxis
+                                            dataKey="appId"
+                                            tickFormatter={(id) => `ID ${id}`}
+                                            interval="preserveStartEnd"
+                                            angle={-15}
+                                            textAnchor="end"
                                             height={50}
-                                            tick={{ fontSize: 10 }} 
+                                            tick={{ fontSize: 10 }}
                                         />
                                         <Tooltip content={<CustomLineTooltip />} />
                                         <Line type="monotone" dataKey="score" stroke={COLORS[3]} strokeWidth={2} name={`Reviewer Score (${maxLabel})`} dot={false} />
@@ -401,7 +401,7 @@ const ReviewerPanel = ({ data }: { data: AggregatedData }) => {
                                 </ResponsiveContainer>
                             </CardContent>
                         </Card>
-                        
+
                         <div className="flex-1 border rounded-lg overflow-hidden min-h-[400px]">
                             <ScrollArea className="h-full">
                                 <Table>
@@ -484,23 +484,23 @@ const ApplicationPanel = ({ data }: { data: AggregatedData }) => {
             }))
             .sort((a, b) => b.score - a.score);
     }, [selectedApp, data.reviewers]);
-    
+
     // Determine dynamic max score and label
     const isEligibility = selectedApp?.score_set_name === ELIGIBILITY_SET_NAME;
     const displayMax = isEligibility ? 6 : 5;
     const maxLabel = `out-of-${displayMax}`;
-    
+
     const maxCriteriaValue = Math.max(displayMax, ...Object.values(selectedApp?.criteriaAverages || {}).map(v => v));
-    
+
     const criteriaData = useMemo(() => {
         if (!selectedApp) return [];
         return Object.entries(selectedApp.criteriaAverages).map(([name, value]) => ({ name, value }));
     }, [selectedApp]);
-    
+
     const handlePreview = (appId: string) => {
         const app = apps[appId];
         if (app) {
-            setSelectedAppSlug((app as any).application_slug || appId); 
+            setSelectedAppSlug((app as any).application_slug || appId);
             setIsModalOpen(true);
         }
     }
@@ -521,14 +521,14 @@ const ApplicationPanel = ({ data }: { data: AggregatedData }) => {
                 <CardContent className="space-y-4">
                     <div className="flex flex-col space-y-2">
                         <Label>Application</Label>
-                        <Select value={selectedAppId} onValueChange={setSelectedAppId}>
+                        <Select value={selectedAppId} onValueChange={setSelectedAppId} >
                             <SelectTrigger>
                                 <SelectValue placeholder="Select an application" />
                             </SelectTrigger>
-                            <SelectContent>
+                            <SelectContent className="w-[50vw]">
                                 {appOptions.map(a => (
                                     <SelectItem key={a.id} value={a.id}>
-                                        App {a.id}: {a.title.substring(0, 40)} ({a.finalAverage?.toFixed(2) || '—'})
+                                        App {a.id}: {a.title} ({a.finalAverage?.toFixed(2) || '—'})
                                     </SelectItem>
                                 ))}
                             </SelectContent>
@@ -546,6 +546,58 @@ const ApplicationPanel = ({ data }: { data: AggregatedData }) => {
                         </CardDescription>
                     </CardHeader>
                     <CardContent className="space-y-6">
+                        <div className="grid md:grid-cols-2 gap-6">
+                            <Card>
+                                <CardHeader>
+                                    <InfoTooltip content={`Compares the final scores (${maxLabel}) given by all reviewers for the currently selected application.`}>
+                                        <CardTitle className="inline-flex items-center gap-2 cursor-help">
+                                            Reviewer Comparison (Bar Chart) <Info className="w-4 h-4 text-muted-foreground" />
+                                        </CardTitle>
+                                    </InfoTooltip>
+                                </CardHeader>
+                                <CardContent className="h-64">
+                                    <ResponsiveContainer width="100%" height="100%">
+                                        <BarChart data={appReviewerData} margin={{ left: 0, right: 10, top: 10, bottom: 0 }}>
+                                            <CartesianGrid strokeDasharray="3 3" />
+                                            <XAxis
+                                                dataKey="name"
+                                                interval={0}
+                                                angle={-15}
+                                                textAnchor="end"
+                                                height={50}
+                                                tickFormatter={(tick) => tick.split(" ")[0]}
+                                                tick={{ fontSize: 10 }}
+                                            />
+                                            <YAxis domain={[0, displayMax]} allowDecimals={false} />
+                                            <Tooltip content={CustomBarTooltip} />
+                                            <Bar dataKey="score" name={`Reviewer Score (${maxLabel})`} fill={COLORS[0]} />
+                                        </BarChart>
+                                    </ResponsiveContainer>
+                                </CardContent>
+                            </Card>
+                            <Card>
+                                <CardHeader>
+                                    <InfoTooltip content={`Shows the average score the application received across all reviewers for each scoring criterion, normalized to a score out of ${displayMax}.`}>
+                                        <CardTitle className="inline-flex items-center gap-2 cursor-help">
+                                            Criteria Average (Radar Chart) <Info className="w-4 h-4 text-muted-foreground" />
+                                        </CardTitle>
+                                    </InfoTooltip>
+                                </CardHeader>
+                                <CardContent className="h-64">
+                                    {criteriaData.length > 0 ? (
+                                        <ResponsiveContainer width="100%" height="100%">
+                                            <RadarChart outerRadius={90} data={criteriaData}>
+                                                <PolarGrid />
+                                                <PolarAngleAxis dataKey="name" tick={{ fontSize: 10 }} />
+                                                <PolarRadiusAxis angle={30} domain={[0, maxCriteriaValue]} allowDecimals={false} />
+                                                <Radar name={selectedApp.title} dataKey="value" stroke={COLORS[4]} fill={COLORS[4]} fillOpacity={0.6} />
+                                                <Tooltip content={<CustomRadarTooltip />} />
+                                            </RadarChart>
+                                        </ResponsiveContainer>
+                                    ) : <p className="text-center text-muted-foreground pt-10">No criteria data for this application.</p>}
+                                </CardContent>
+                            </Card>
+                        </div>
                         <div className="flex-1 border rounded-lg overflow-hidden min-h-[300px]">
                             <ScrollArea className="h-full">
                                 <Table>
@@ -589,59 +641,8 @@ const ApplicationPanel = ({ data }: { data: AggregatedData }) => {
                                 </Table>
                             </ScrollArea>
                         </div>
-                        
-                        <div className="grid md:grid-cols-2 gap-6">
-                             <Card>
-                                <CardHeader>
-                                    <InfoTooltip content={`Compares the final scores (${maxLabel}) given by all reviewers for the currently selected application.`}>
-                                        <CardTitle className="inline-flex items-center gap-2 cursor-help">
-                                            Reviewer Comparison (Bar Chart) <Info className="w-4 h-4 text-muted-foreground" />
-                                        </CardTitle>
-                                    </InfoTooltip>
-                                </CardHeader>
-                                <CardContent className="h-64">
-                                    <ResponsiveContainer width="100%" height="100%">
-                                        <BarChart data={appReviewerData} margin={{ left: 0, right: 10, top: 10, bottom: 0 }}>
-                                            <CartesianGrid strokeDasharray="3 3" />
-                                            <XAxis 
-                                                dataKey="name" 
-                                                interval={0} 
-                                                angle={-15} 
-                                                textAnchor="end" 
-                                                height={50} 
-                                                tickFormatter={(tick) => tick.split(" ")[0]} 
-                                                tick={{ fontSize: 10 }}
-                                            />
-                                            <YAxis domain={[0, displayMax]} allowDecimals={false} />
-                                            <Tooltip content={CustomBarTooltip} />
-                                            <Bar dataKey="score" name={`Reviewer Score (${maxLabel})`} fill={COLORS[0]} />
-                                        </BarChart>
-                                    </ResponsiveContainer>
-                                </CardContent>
-                             </Card>
-                              <Card>
-                                <CardHeader>
-                                    <InfoTooltip content={`Shows the average score the application received across all reviewers for each scoring criterion, normalized to a score out of ${displayMax}.`}>
-                                        <CardTitle className="inline-flex items-center gap-2 cursor-help">
-                                            Criteria Average (Radar Chart) <Info className="w-4 h-4 text-muted-foreground" />
-                                        </CardTitle>
-                                    </InfoTooltip>
-                                </CardHeader>
-                                <CardContent className="h-64">
-                                     {criteriaData.length > 0 ? (
-                                        <ResponsiveContainer width="100%" height="100%">
-                                            <RadarChart outerRadius={90} data={criteriaData}>
-                                                <PolarGrid />
-                                                <PolarAngleAxis dataKey="name" tick={{ fontSize: 10 }} />
-                                                <PolarRadiusAxis angle={30} domain={[0, maxCriteriaValue]} allowDecimals={false} />
-                                                <Radar name={selectedApp.title} dataKey="value" stroke={COLORS[4]} fill={COLORS[4]} fillOpacity={0.6} />
-                                                <Tooltip content={<CustomRadarTooltip />} />
-                                            </RadarChart>
-                                        </ResponsiveContainer>
-                                    ) : <p className="text-center text-muted-foreground pt-10">No criteria data for this application.</p>}
-                                </CardContent>
-                             </Card>
-                        </div>
+
+
                     </CardContent>
                 </Card>
             )}

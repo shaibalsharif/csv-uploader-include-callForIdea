@@ -1,5 +1,3 @@
-// shaibalsharif/csv-uploader-include-callforidea/csv-uploader-include-callForIdea-fe61227ec0c792d529ac1bafca0fb8d9e4e0fee4/lib/scoring-utils.ts
-
 export interface RawScoringRow {
   application_id: string;
   application_slug: string; 
@@ -151,6 +149,7 @@ export function computeAggregates(data: RawScoringRow[]): AggregatedData {
         sumScore: 0, 
         sumMax: 0,   
         criteriaCount: 0,
+        criteriaScores: {}, 
       };
     }
     const revEntry = apps[appId].reviewers[rev];
@@ -161,6 +160,15 @@ export function computeAggregates(data: RawScoringRow[]): AggregatedData {
     revEntry.criteriaCount++;
 
     const critKey = r.scoring_criterion.toString() || "Criterion";
+    
+    // Store the individual criterion data for this reviewer
+    revEntry.criteriaScores[critKey] = {
+        rawScore: r.score,
+        maxScore: r.max_score,
+        weightedScore: r.weighted_score,
+        weightedMaxScore: r.weighted_max_score,
+    };
+
     if (!apps[appId].criteria[critKey]) {
       apps[appId].criteria[critKey] = {
         sumWeighted: 0,

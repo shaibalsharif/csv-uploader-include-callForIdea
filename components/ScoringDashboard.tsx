@@ -1,4 +1,3 @@
-// shaibalsharif/csv-uploader-include-callforidea/csv-uploader-include-callForIdea-fe61227ec0c792d529ac1bafca0fb8d9e4e0fee4/components/ScoringDashboard.tsx
 "use client";
 
 import { useState, useMemo, useEffect, useRef } from "react";
@@ -25,7 +24,6 @@ const COLORS = ["#0088FE", "#00C49F", "#FFBB28", "#FF8042", "#a855f7"];
 const ELIGIBILITY_SET_NAME = "Eligibility Shortlisting";
 
 
-// --- Helper Component for Informational Tooltips ---
 const InfoTooltip = ({ content, children, className = "" }: { content: string; children: React.ReactNode, className?: string }) => (
     <UiTooltip delayDuration={300}>
         <TooltipTrigger asChild className={className}>
@@ -38,7 +36,6 @@ const InfoTooltip = ({ content, children, className = "" }: { content: string; c
 );
 
 
-// --- Custom Tooltip Definitions (Recharts) ---
 const CustomBarTooltip = ({ active, payload, label }: any) => {
     if (active && payload && payload.length) {
         const name = payload[0].name || payload[0].dataKey;
@@ -92,25 +89,43 @@ const CustomLineTooltip = ({ active, payload, label }: any) => {
 const ScoreBreakdownTooltip = ({ appData, reviewerEmail }: { appData: any, reviewerEmail: string }) => {
     const reviewerData = appData.reviewers[reviewerEmail];
 
-    if (!reviewerData) return <div className="text-sm text-muted-foreground">No criteria scored by this reviewer.</div>;
+    if (!reviewerData || !reviewerData.criteriaScores) {
+        return <div className="text-black p-2 bg-background border rounded-md shadow-lg text-sm ">No detailed criteria breakdown available for this reviewer.</div>;
+    }
 
-    const displayMax = appData.score_set_name === ELIGIBILITY_SET_NAME ? 6 : 5;
+    const isEligibility = appData.score_set_name === ELIGIBILITY_SET_NAME;
+    const displayMax = isEligibility ? 6 : 5;
+    
+    const reviewerCriteriaScores = reviewerData.criteriaScores; 
 
-
-    const criteriaBreakdown = Object.entries(appData.criteria).map(([name, data]: [string, any]) => {
-        const avgScore = appData.criteriaAverages[name] || 0;
+    const criteriaBreakdown = Object.entries(reviewerCriteriaScores).map(([name, scoreData]: [string, any]) => {
+        let normalizedScore = 0;
+        
+        // Select the correct score/max based on the score set type
+        const scoreValue = isEligibility ? scoreData.rawScore : scoreData.weightedScore;
+        const maxScoreValue = isEligibility ? scoreData.maxScore : scoreData.weightedMaxScore;
+        
+        if (maxScoreValue > 0) {
+            // Apply normalization: (score / max_score) * displayMax
+            normalizedScore = (scoreValue / maxScoreValue) * displayMax;
+        } else {
+            normalizedScore = scoreValue;
+        }
+        
+        // Round to 2 decimal places for display
+        const finalScore = Math.round((normalizedScore + Number.EPSILON) * 100) / 100;
 
         return {
             name,
-            score: avgScore.toFixed(2),
-            rawValue: data.sumScore,
-            maxScore: data.sumMax,
+            score: finalScore.toFixed(2),
+            rawValue: scoreData.rawScore, 
+            maxScore: scoreData.maxScore,
         };
-    }).sort((a, b) => b.score.localeCompare(a.score));
+    }).sort((a, b) => parseFloat(b.score) - parseFloat(a.score));
 
     return (
         <div className="p-2 bg-background border max-w-sm rounded-md shadow-lg text-sm">
-            <p className="font-bold mb-2">Criteria Breakdown (Normalized to {displayMax})</p>
+            <p className="font-bold mb-2 text-[#00000088]">Criteria Breakdown (Normalized to {displayMax})</p>
             <div className="max-h-40 overflow-y-auto pr-2">
                 {criteriaBreakdown.map((c) => (
                     <div key={c.name} className="flex justify-between py-0.5">
@@ -124,12 +139,9 @@ const ScoreBreakdownTooltip = ({ appData, reviewerEmail }: { appData: any, revie
 };
 
 
-// --- Sub-Dashboard Components ---
-
 const OverviewPanel = ({ data }: { data: AggregatedData }) => {
     const { summary, apps, reviewers } = data;
 
-    // FIX: Determine dynamic max score and label
     const isEligibility = Object.values(data.apps).some(a => a.score_set_name === ELIGIBILITY_SET_NAME);
     const displayMax = isEligibility ? 6 : 5;
     const maxLabel = `out-of-${displayMax}`;
@@ -297,7 +309,6 @@ const ReviewerPanel = ({ data }: { data: AggregatedData }) => {
 
     const selectedReviewer = reviewers[selectedReviewerEmail || ''] || null;
 
-    // Determine dynamic max score and label
     const firstApp = Object.values(apps)[0] || {};
     const isEligibility = firstApp.score_set_name === ELIGIBILITY_SET_NAME;
     const displayMax = isEligibility ? 6 : 5;
@@ -485,7 +496,6 @@ const ApplicationPanel = ({ data }: { data: AggregatedData }) => {
             .sort((a, b) => b.score - a.score);
     }, [selectedApp, data.reviewers]);
 
-    // Determine dynamic max score and label
     const isEligibility = selectedApp?.score_set_name === ELIGIBILITY_SET_NAME;
     const displayMax = isEligibility ? 6 : 5;
     const maxLabel = `out-of-${displayMax}`;
@@ -650,8 +660,6 @@ const ApplicationPanel = ({ data }: { data: AggregatedData }) => {
     );
 };
 
-
-// --- Main Exported Component ---
 
 export function ScoringDashboard({ data, initialTab = 'overview' }: ScoringDashboardProps) {
     return (

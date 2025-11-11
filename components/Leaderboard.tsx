@@ -334,8 +334,16 @@ export function Leaderboard({ config }: { config: { apiKey: string } }) {
             const rawDataMap = rawDataList.reduce((acc, app) => ({ ...acc, [app.slug]: app }), {} as Record<string, AppRawData>);
             const combinedData = minimalData.map(min => {
                 const rawApp = rawDataMap[min.slug];
-                return rawApp ? { ...rawApp, totalScore: min.totalScore, municipality: min.municipality } as FilteredAppRawData : null;
-            }).filter((d): d is FilteredAppRawData => d !== null);
+                // CRITICAL: We need the full entry to get the score breakdown from the API
+                const leaderboardEntry = leaderboard.find(e => e.slug === min.slug); 
+                
+                return rawApp && leaderboardEntry ? { 
+                    ...rawApp, 
+                    totalScore: min.totalScore, 
+                    municipality: min.municipality,
+                    scoreBreakdown: leaderboardEntry.scoreBreakdown // Include breakdown data
+                } as FilteredAppRawData & { scoreBreakdown: ScoreBreakdown[] } : null;
+            }).filter((d): d is FilteredAppRawData & { scoreBreakdown: ScoreBreakdown[] } => d !== null);
             setFilteredApps(combinedData);
         } catch (err) {
             console.error("Failed to load analytics data:", err);
@@ -343,7 +351,7 @@ export function Leaderboard({ config }: { config: { apiKey: string } }) {
         } finally {
             setIsAnalyticsLoading(false);
         }
-    }, [selectedScoreSet, debouncedTitleSearch, debouncedTagFilter, debouncedMinScore, debouncedMaxScore, debouncedMunicipalityFilter, debouncedChallengeStatementString]);
+    }, [selectedScoreSet, debouncedTitleSearch, debouncedTagFilter, debouncedMinScore, debouncedMaxScore, debouncedMunicipalityFilter, debouncedChallengeStatementString, leaderboard]);
 
     useEffect(() => {
         if (!isChallengeFilterApplicable && challengeStatementFilter.length > 0) {
@@ -424,12 +432,9 @@ export function Leaderboard({ config }: { config: { apiKey: string } }) {
 
     /**
      * Helper to group applications by a dimension value for PDF tables.
-     * @param apps - Array of applications.
-     * @param key - The breakdown key ('municipality', 'gender', 'psCode', etc.).
-     * @returns A map of { Dimension Value: Application[] }
      */
-    const getBreakdownGroupedApps = (apps: FilteredAppRawData[], key: BreakdownKey): Map<string, FilteredAppRawData[]> => {
-        const groups = new Map<string, FilteredAppRawData[]>();
+    const getBreakdownGroupedApps = (apps: (FilteredAppRawData & { scoreBreakdown: ScoreBreakdown[] })[], key: BreakdownKey): Map<string, (FilteredAppRawData & { scoreBreakdown: ScoreBreakdown[] })[]> => {
+        const groups = new Map<string, (FilteredAppRawData & { scoreBreakdown: ScoreBreakdown[] })[]>();
         const normalizeApplicantCategory = (value: string): string => {
             const v = value.toLowerCase();
             if (v.includes('academia')) return 'Education Institute';
@@ -449,7 +454,6 @@ export function Leaderboard({ config }: { config: { apiKey: string } }) {
                     value = app.category?.name?.en_GB || 'Uncategorized';
                     break;
                 case 'psCode':
-                    // **FIXED:** Use the dedicated PS Code extractor to correctly handle multi-slug arrays.
                     value = extractPsCodeValue(app, dim.slug as string[]) || 'N/A';
                     break;
                 case 'gender':
@@ -458,7 +462,6 @@ export function Leaderboard({ config }: { config: { apiKey: string } }) {
                     value = extractFormattedValue(app, dim.slug as string) || 'N/A';
                     if (key === 'applicantCategory') value = normalizeApplicantCategory(value);
                     if (key === 'age') {
-                        // Re-use the abbreviation logic from LeaderboardBreakdowns for consistent grouping
                         value = value.toLowerCase().includes('below 18') ? '< 18' : value.toLowerCase().includes('above 65') ? '> 65' : value;
                     }
                     break;
@@ -470,7 +473,6 @@ export function Leaderboard({ config }: { config: { apiKey: string } }) {
             groups.get(value)?.push(app);
         });
 
-        // Sort applications within each group by score
         groups.forEach(group => group.sort((a, b) => b.totalScore - a.totalScore));
         
         return groups;
@@ -523,6 +525,13 @@ export function Leaderboard({ config }: { config: { apiKey: string } }) {
             if (typeof window === 'undefined') {
                 throw new Error("PDF export is only supported on the client side.");
             }
+            
+            // We need to fetch the detailed leaderboard entries to get scoreBreakdown data
+            const detailedApps = appsToExport.map(app => {
+                const detailed = leaderboard.find(e => e.slug === app.slug);
+                return detailed ? { ...app, scoreBreakdown: detailed.scoreBreakdown } : app;
+            }) as (FilteredAppRawData & { scoreBreakdown: ScoreBreakdown[] })[];
+
 
             const doc = new jsPDF('p', 'mm', 'a4');
             let y = 10;
@@ -532,7 +541,7 @@ export function Leaderboard({ config }: { config: { apiKey: string } }) {
                 doc.addFileToVFS(`${BANGLA_FONT_NAME}.ttf`, BANGLA_FONT_BASE64);
                 doc.addFont(`${BANGLA_FONT_NAME}.ttf`, BANGLA_FONT_NAME, 'normal');
                 doc.setFont(BANGLA_FONT_NAME, 'normal');
-             
+                // doc.text(`Report generated using custom font for Bangla/Unicode support.`, 10, y + 2);
             } else {
                 doc.text(`NOTE: PDF may not display Bangla correctly without embedding the font Base64 string.`, 10, y + 2);
                 doc.setFont('Helvetica', 'normal');
@@ -546,23 +555,38 @@ export function Leaderboard({ config }: { config: { apiKey: string } }) {
             doc.setFontSize(10);
             doc.text(`Source: ${currentScoreSetName}`, 10, y);
             y += 5;
-            doc.text(`Target: ${appsToExport.length} Applications (${selectedSlugs.length > 0 ? 'Selected' : 'All Filtered'})`, 10, y);
+            doc.text(`Target: ${detailedApps.length} Applications (${selectedSlugs.length > 0 ? 'Selected' : 'All Filtered'})`, 10, y);
             y += 5;
 
             const appTableHeaders = ["#", "Title", "Score", "Municipality", "Category"];
-            const baseAppTableData = appsToExport.map((app, index) => ([
-                (index + 1).toString(),
-                app.title,
-                app.totalScore.toFixed(2),
-                app.municipality || 'N/A',
-                app.category?.name?.en_GB || 'Uncategorized',
-            ]));
+            const mainTableRows: any[] = [];
+            
+            detailedApps.forEach((app, index) => {
+                // Main Row
+                mainTableRows.push([
+                    (index + 1).toString(),
+                    app.title,
+                    app.totalScore.toFixed(2),
+                    app.municipality || 'N/A',
+                    app.category?.name?.en_GB || 'Uncategorized',
+                ]);
+                
+                // Breakdown Row
+                const breakdownText = app.scoreBreakdown.map(
+                    (b) => `${b.name}: ${renderScore(b)}`
+                ).join(" | ");
 
-            // --- 1. Main Leaderboard Table (All Selected/Filtered Apps) ---
+                mainTableRows.push([
+                    { content: `Breakdown: ${breakdownText}`, colSpan: 5, styles: { fontSize: 8, fontStyle: 'italic', fillColor: [240, 240, 240] } }
+                ]);
+            });
+
+
+            // --- 1. Main Leaderboard Table (All Selected/Filtered Apps with breakdown) ---
             autoTable(doc, {
                 startY: y,
                 head: [appTableHeaders],
-                body: baseAppTableData,
+                body: mainTableRows,
                 theme: 'striped',
                 headStyles: { fillColor: [52, 73, 94], font: BANGLA_FONT_NAME, fontStyle: 'normal' },
                 styles: { font: BANGLA_FONT_NAME, fontStyle: 'normal', cellWidth: 'wrap' },
@@ -574,7 +598,13 @@ export function Leaderboard({ config }: { config: { apiKey: string } }) {
                     4: { cellWidth: 35 },
                 },
                 margin: { top: 5 },
-                // REMOVED didDrawPage to prevent conflicts. Footer is added at the end.
+                didParseCell: (data) => {
+                    // Apply full width and specific style to breakdown rows
+                    if (data.row.raw[0]?.styles?.colSpan === 5) {
+                        data.cell.colSpan = 5;
+                        data.cell.styles = { ...data.cell.styles, ...data.row.raw[0].styles, lineColor: [200, 200, 200] };
+                    }
+                }
             });
 
             // Start Y for the breakdown section (must be based on the end of the previous table)
@@ -583,14 +613,12 @@ export function Leaderboard({ config }: { config: { apiKey: string } }) {
 
             // --- 2. Multiple Breakdown Tables (Table per breakdown value) ---
             const breakdownKeysToExport: BreakdownKey[] = ['municipality', 'psCode', 'gender', 'age', 'applicantCategory'];
-            // Safe lower limit on the page for starting a new breakdown group title/table
-            const PAGE_BOTTOM_LIMIT = doc.internal.pageSize.height - 35; // leaves room for title + padding + footer
+            const PAGE_BOTTOM_LIMIT = doc.internal.pageSize.height - 35; 
 
             // Loop through each major breakdown dimension (municipality, pscode, etc.)
             for (const key of breakdownKeysToExport) {
-                const groups = getBreakdownGroupedApps(appsToExport, key);
+                const groups = getBreakdownGroupedApps(detailedApps, key);
                 const breakdownTitle = dimensionMap[key].label;
-                // Sort groups by key name for ordered tables
                 const sortedGroups = Array.from(groups.keys()).sort();
 
                 if (sortedGroups.length === 0 || (sortedGroups.length === 1 && sortedGroups[0] === 'N/A')) continue;
@@ -613,7 +641,6 @@ export function Leaderboard({ config }: { config: { apiKey: string } }) {
                     if (groupApps.length === 0) continue;
                     
                     // CRITICAL FIX: Check if the title and minimum space for a small table will fit.
-                    // This forces a page break *before* printing the title if space is insufficient.
                     if (currentY > PAGE_BOTTOM_LIMIT) {
                         doc.addPage();
                         currentY = 10;
@@ -645,7 +672,6 @@ export function Leaderboard({ config }: { config: { apiKey: string } }) {
                             3: { cellWidth: 40 },
                         },
                         margin: { top: 5 },
-                        // REMOVED didDrawPage to prevent conflicts. Footer is added at the end.
                     });
 
                     // Update Y position for the NEXT title/element

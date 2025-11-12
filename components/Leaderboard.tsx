@@ -21,7 +21,7 @@ import { ApplicationDetailsInquiryModal } from './ApplicationDetailsInquiryModal
 import { ScoreAnalyticsCard } from './ScoreAnalyticsCard';
 import { LeaderboardBreakdowns, FilteredAppRawData, BreakdownKey, processBreakdownData, dimensionMap, extractFieldValue } from './LeaderboardBreakdowns';
 import { GenerateReportButton } from './GenerateReportButton';
-import { SunburstAnalyticsCard } from './SunburstAnalyticsCard';
+import { SunburstAnalyticsCard } from './SunburstAnalyticsCard'; 
 import Link from 'next/link';
 
 // PDF Imports (Using the user's working structure)
@@ -48,7 +48,7 @@ const BREAKDOWN_OPTIONS_MAP: Record<BreakdownKey, string> = {
 
 // --- START Unicode Font Configuration ---
 const BANGLA_FONT_NAME = 'BanglaUnicodeFont';
-const BANGLA_FONT_BASE64 = bangla;
+const BANGLA_FONT_BASE64 = bangla; 
 
 // Ensure jspdf-autotable is imported and registered
 if (typeof window !== 'undefined') {
@@ -65,8 +65,8 @@ interface ScoreSet {
 }
 
 interface ProblemStatement {
-    name: string;
-    tag: string;
+    name: string; 
+    tag: string; 
 }
 
 const BREAKDOWN_OPTIONS: { value: BreakdownKey; label: string; }[] = [
@@ -93,7 +93,7 @@ function useDebounce<T>(value: T, delay: number): T {
 
 const TECHNICAL_SLUG = "nmWNmZPb";
 const JURY_SLUG = "JljrBVpd";
-const ALL_STATEMENTS_VALUE = '__all__';
+const ALL_STATEMENTS_VALUE = '__all__'; 
 
 const SkeletonRow = () => (
     <TableRow>
@@ -131,7 +131,7 @@ const extractPsCodeValue = (app: FilteredAppRawData, possibleSlugs: string[]): s
 };
 
 
-interface PaginationProps { currentPage: number; lastPage: number; total: number; perPage: number; changePage: (newPage: number) => void; setPerPage: (perPage: number) => void; disabled: boolean; }
+interface PaginationProps { currentPage: number; lastPage: number; total: number; perPage: number; changePage: (newPage: number) => void; setPerPage: (perPage: number) => void; disabled: boolean;}
 const ManagerPaginationControls: React.FC<PaginationProps> = ({
     currentPage,
     lastPage,
@@ -142,8 +142,8 @@ const ManagerPaginationControls: React.FC<PaginationProps> = ({
     disabled
 }) => {
     const pageNumbers = useMemo(() => {
-        const delta = 2;
-        const range: (number | string)[] = [];
+        const delta = 2; 
+        const range: (number | string)[] = []; 
 
         for (let i = Math.max(2, currentPage - delta); i <= Math.min(lastPage - 1, currentPage + delta); i++) {
             range.push(i);
@@ -228,7 +228,7 @@ export function Leaderboard({ config }: { config: { apiKey: string } }) {
     const [isSyncing, setIsSyncing] = useState(false);
     const [isSyncingAll, setIsSyncingAll] = useState(false);
     const [isConfirmModalOpen, setIsConfirmModalOpen] = useState(false);
-
+    
     const [error, setError] = useState<string | null>(null);
     const [selectedScoreSet, setSelectedScoreSet] = useState<string>("");
     const [selectedSlugs, setSelectedSlugs] = useState<string[]>([]);
@@ -236,12 +236,12 @@ export function Leaderboard({ config }: { config: { apiKey: string } }) {
     const [selectedAppSlug, setSelectedAppSlug] = useState<string | null>(null);
     const [lastSyncTime, setLastSyncTime] = useState<string | null>(null);
     const [currentScoreSetName, setCurrentScoreSetName] = useState<string>("");
-    const [isExporting, setIsExporting] = useState(false);
+    const [isExporting, setIsExporting] = useState(false); 
     const [isBreakdownModalOpen, setIsBreakdownModalOpen] = useState(false);
-
+    
     // NEW STATE: Holds breakdown keys selected for PDF export
     const [breakdownsToExport, setBreakdownsToExport] = useState<BreakdownKey[]>(ALL_BREAKDOWN_KEYS);
-
+    
     const [selectedBreakdown, setSelectedBreakdown] = useState<BreakdownKey>('municipality');
 
     const tableContainerRef = useRef<HTMLDivElement>(null);
@@ -284,157 +284,7 @@ export function Leaderboard({ config }: { config: { apiKey: string } }) {
 
     const isAnySyncing = isSyncing || isSyncingAll;
 
-    useEffect(() => {
-        const fetchMuniAndPsCodes = async () => {
-            if (isAnySyncing || isLoadingSets) return;
-            const psCodes = await getChallengeStatements(municipalityFilter);
-
-            const psData: ProblemStatement[] = psCodes.map(code => ({ name: code, tag: code }));
-            setAvailableChallengeStatements(psData);
-        };
-        fetchMuniAndPsCodes();
-    }, [debouncedMunicipalityFilter, isAnySyncing, isLoadingSets]);
-
-
-    useEffect(() => {
-        const fetchData = async () => {
-            if (!config.apiKey) { setError("API key is not configured."); setIsLoadingSets(false); return; }
-            setIsLoadingSets(true);
-            try {
-                const [sets, muniData] = await Promise.all([getScoreSets(config), getMunicipalities()]);
-                setScoreSets(sets);
-                setMunicipalities(muniData);
-                if (sets.length > 0) {
-                    const technicalSet = sets.find(set => set.slug === TECHNICAL_SLUG);
-                    const defaultSet = technicalSet || sets[0];
-
-                    setSelectedScoreSet(defaultSet.slug);
-                    setCurrentScoreSetName(defaultSet.name.en_GB);
-                }
-            } catch (err: any) { setError("Failed to load setup data."); }
-            finally { setIsLoadingSets(false); }
-        };
-        fetchData();
-    }, [config]);
-
-    const fetchLeaderboard = useCallback(async () => {
-        if (!selectedScoreSet) return;
-        setIsLoading(true);
-        setError(null);
-        const parsedMin = debouncedMinScore ? parseFloat(debouncedMinScore) : undefined;
-        const parsedMax = debouncedMaxScore ? parseFloat(debouncedMaxScore) : undefined;
-        try {
-            const response = await getLeaderboardPage(selectedScoreSet, pagination.currentPage, pagination.perPage, sortConfig, debouncedTitleSearch, debouncedTagFilter, parsedMin, parsedMax, debouncedMunicipalityFilter, debouncedChallengeStatementString);
-            setLeaderboard(response.data as LeaderboardEntry[]);
-            setPagination(p => ({ ...p, currentPage: response.current_page, lastPage: response.last_page, total: response.total }));
-            // Return data to be used by fetchAnalyticsData immediately
-            return response.data;
-        } catch (err: any) {
-            setError(err.message || "Failed to load leaderboard data.");
-            return [];
-        } finally {
-            setIsLoading(false);
-        }
-    }, [selectedScoreSet, pagination.currentPage, pagination.perPage, sortConfig, debouncedTitleSearch, debouncedTagFilter, debouncedMinScore, debouncedMaxScore, debouncedMunicipalityFilter, debouncedChallengeStatementString]);
-
-    const fetchAnalyticsData = useCallback(async (currentLeaderboard: LeaderboardEntry[]) => {
-        if (!selectedScoreSet) return;
-        setIsAnalyticsLoading(true);
-        const parsedMin = debouncedMinScore ? parseFloat(debouncedMinScore) : undefined;
-        const parsedMax = debouncedMaxScore ? parseFloat(debouncedMaxScore) : undefined;
-        try {
-            // Fetch all minimal data matching filters (for accurate count)
-            const minimalData = await getAllLeaderboardDataForAnalytics(selectedScoreSet, debouncedTitleSearch, debouncedTagFilter, parsedMin, parsedMax, debouncedMunicipalityFilter, debouncedChallengeStatementString);
-            if (minimalData.length === 0) { setFilteredApps([]); return; }
-            const slugs = minimalData.map(d => d.slug);
-            const rawDataList = await getRawApplicationsBySlugs(slugs);
-            const rawDataMap = rawDataList.reduce((acc, app) => ({ ...acc, [app.slug]: app }), {} as Record<string, AppRawData>);
-
-            // Map current leaderboard entries by slug for quick lookup
-            const leaderboardMap = currentLeaderboard.reduce((acc, entry) => ({ ...acc, [entry.slug]: entry }), {} as Record<string, LeaderboardEntry>);
-
-            // Combine data: ensures filteredApps contains *all* filtered applications with score breakdown
-            const combinedData = minimalData.map(min => {
-                const rawApp = rawDataMap[min.slug];
-                const leaderboardEntry = leaderboardMap[min.slug];
-
-                return rawApp ? {
-                    ...rawApp,
-                    totalScore: min.totalScore,
-                    municipality: min.municipality,
-                    scoreBreakdown: leaderboardEntry?.scoreBreakdown || []
-                } as FilteredAppRawData & { scoreBreakdown: ScoreBreakdown[] } : null;
-            }).filter((d): d is FilteredAppRawData & { scoreBreakdown: ScoreBreakdown[] } => d !== null);
-
-            setFilteredApps(combinedData);
-        } catch (err) {
-            console.error("Failed to load analytics data:", err);
-            setFilteredApps([]);
-        } finally {
-            setIsAnalyticsLoading(false);
-        }
-    }, [selectedScoreSet, debouncedTitleSearch, debouncedTagFilter, debouncedMinScore, debouncedMaxScore, debouncedMunicipalityFilter, debouncedChallengeStatementString]);
-
-
-    // Helper to fetch both paginated data (for view) and all data (for export/analytics) in order
-    const fetchAllDataSequentially = useCallback(async () => {
-        if (!selectedScoreSet) return;
-
-        // 1. Fetch Leaderboard (updates `leaderboard` state)
-        const currentLeaderboard = await fetchLeaderboard();
-
-        // 2. Fetch Analytics/Export Data (uses the returned breakdown data)
-        await fetchAnalyticsData(currentLeaderboard);
-
-    }, [fetchLeaderboard, fetchAnalyticsData, selectedScoreSet]);
-
-    // Effect 1: Triggered by filter changes (resetting to page 1)
-    useEffect(() => {
-        // ... (Filter cleanup logic) ...
-        const shouldResetPage = (
-            pagination.currentPage !== 1 ||
-            (municipalityFilter !== 'all' && challengeStatementFilter.length > 1)
-        );
-
-        if (shouldResetPage) {
-            // Prevent immediate re-run on setPagination by exiting here
-            setPagination(p => ({ ...p, currentPage: 1 }));
-            return;
-        }
-
-        // If on page 1, fetch all data sequentially (Leaderboard then Analytics)
-        fetchAllDataSequentially();
-
-    }, [
-        selectedScoreSet,
-        pagination.perPage,
-        sortConfig.key,
-        sortConfig.direction,
-        debouncedTitleSearch,
-        debouncedTagFilter,
-        debouncedMinScore,
-        debouncedMaxScore,
-        debouncedMunicipalityFilter,
-        debouncedChallengeStatementString,
-        isChallengeFilterApplicable,
-        availableChallengeStatements.length // Use length for stability
-    ]);
-
-    // Effect 2: Triggered only by page number changes (pagination controls)
-    useEffect(() => {
-        if (pagination.currentPage !== 1) {
-            fetchLeaderboard();
-        }
-    }, [pagination.currentPage, fetchLeaderboard]);
-
-    // Fix: Ensure exportTargetCount reflects the total filtered set
-    const exportTargetCount = selectedSlugs.length > 0 ? selectedSlugs.length : filteredApps.length;
-
-
-    /**
-     * Helper to group applications by a dimension value for PDF tables.
-     */
-
+    // --- FIX: Moved local functions inside component to access state/setters ---
     const handlePageChange = (newPage: number) => {
         if (newPage > 0 && newPage <= pagination.lastPage) {
             setPagination(prev => ({ ...prev, currentPage: newPage }));
@@ -481,11 +331,160 @@ export function Leaderboard({ config }: { config: { apiKey: string } }) {
             setPagination(p => ({ ...p, currentPage: 1 }));
         } catch (err: any) {
             setError(err.message || "Full synchronization failed. Check if app_municipality_map is populated.");
-            toast({ title: "Full Sync Failed", description: err.message, variant: "destructive" });
+            toast({ title: "Sync Failed", description: err.message, variant: "destructive" });
         } finally {
             setIsSyncingAll(false);
         }
     };
+    // --- END: Moved local functions ---
+
+    useEffect(() => {
+        const fetchMuniAndPsCodes = async () => {
+            if (isAnySyncing || isLoadingSets) return;
+            const psCodes = await getChallengeStatements(municipalityFilter);
+
+            const psData: ProblemStatement[] = psCodes.map(code => ({ name: code, tag: code }));
+            setAvailableChallengeStatements(psData);
+        };
+        fetchMuniAndPsCodes();
+    }, [debouncedMunicipalityFilter, isAnySyncing, isLoadingSets]);
+
+
+    useEffect(() => {
+        const fetchData = async () => {
+            if (!config.apiKey) { setError("API key is not configured."); setIsLoadingSets(false); return; }
+            setIsLoadingSets(true);
+            try {
+                const [sets, muniData] = await Promise.all([getScoreSets(config), getMunicipalities()]);
+                setScoreSets(sets);
+                setMunicipalities(muniData);
+                if (sets.length > 0) {
+                    const technicalSet = sets.find(set => set.slug === TECHNICAL_SLUG);
+                    const defaultSet = technicalSet || sets[0];
+
+                    setSelectedScoreSet(defaultSet.slug);
+                    setCurrentScoreSetName(defaultSet.name.en_GB);
+                }
+            } catch (err: any) { setError("Failed to load setup data."); }
+            finally { setIsLoadingSets(false); }
+        };
+        fetchData();
+    }, [config]);
+
+    const fetchLeaderboard = useCallback(async () => {
+        if (!selectedScoreSet) return;
+        setIsLoading(true);
+        setError(null);
+        const parsedMin = debouncedMinScore ? parseFloat(debouncedMinScore) : undefined;
+        const parsedMax = debouncedMaxScore ? parseFloat(debouncedMaxScore) : undefined;
+        try {
+            const response = await getLeaderboardPage(selectedScoreSet, pagination.currentPage, pagination.perPage, sortConfig, debouncedTitleSearch, debouncedTagFilter, parsedMin, parsedMax, debouncedMunicipalityFilter, debouncedChallengeStatementString);
+            setLeaderboard(response.data as LeaderboardEntry[]);
+            setPagination(p => ({ ...p, currentPage: response.current_page, lastPage: response.last_page, total: response.total }));
+            return response.data; 
+        } catch (err: any) {
+            setError(err.message || "Failed to load leaderboard data.");
+            return [];
+        } finally {
+            setIsLoading(false);
+        }
+    }, [selectedScoreSet, pagination.currentPage, pagination.perPage, sortConfig, debouncedTitleSearch, debouncedTagFilter, debouncedMinScore, debouncedMaxScore, debouncedMunicipalityFilter, debouncedChallengeStatementString]);
+
+    const fetchAnalyticsData = useCallback(async (currentLeaderboard: LeaderboardEntry[]) => {
+        if (!selectedScoreSet) return;
+        setIsAnalyticsLoading(true);
+        const parsedMin = debouncedMinScore ? parseFloat(debouncedMinScore) : undefined;
+        const parsedMax = debouncedMaxScore ? parseFloat(debouncedMaxScore) : undefined;
+        try {
+            const minimalData = await getAllLeaderboardDataForAnalytics(selectedScoreSet, debouncedTitleSearch, debouncedTagFilter, parsedMin, parsedMax, debouncedMunicipalityFilter, debouncedChallengeStatementString);
+            if (minimalData.length === 0) { setFilteredApps([]); return; }
+            const slugs = minimalData.map(d => d.slug);
+            const rawDataList = await getRawApplicationsBySlugs(slugs);
+            const rawDataMap = rawDataList.reduce((acc, app) => ({ ...acc, [app.slug]: app }), {} as Record<string, AppRawData>);
+            
+            // Fetch all necessary leaderboard entries for *all* filtered applications
+            const allLeaderboardEntriesResponse = await getLeaderboardPage(selectedScoreSet, 1, slugs.length, sortConfig, debouncedTitleSearch, debouncedTagFilter, parsedMin, parsedMax, debouncedMunicipalityFilter, debouncedChallengeStatementString);
+            const fullLeaderboardMap = allLeaderboardEntriesResponse.data.reduce((acc, entry) => ({ ...acc, [entry.slug]: entry }), {} as Record<string, LeaderboardEntry>);
+
+            const combinedData = minimalData.map(min => {
+                const rawApp = rawDataMap[min.slug];
+                const leaderboardEntry = fullLeaderboardMap[min.slug]; 
+                
+                return rawApp ? { 
+                    ...rawApp, 
+                    totalScore: min.totalScore, 
+                    municipality: min.municipality,
+                    scoreBreakdown: leaderboardEntry?.scoreBreakdown || []
+                } as FilteredAppRawData & { scoreBreakdown: ScoreBreakdown[] } : null;
+            }).filter((d): d is FilteredAppRawData & { scoreBreakdown: ScoreBreakdown[] } => d !== null);
+
+            setFilteredApps(combinedData);
+        } catch (err) {
+            console.error("Failed to load analytics data:", err);
+            setFilteredApps([]);
+        } finally {
+            setIsAnalyticsLoading(false);
+        }
+    }, [selectedScoreSet, debouncedTitleSearch, debouncedTagFilter, debouncedMinScore, debouncedMaxScore, debouncedMunicipalityFilter, debouncedChallengeStatementString, sortConfig]); 
+
+
+    const fetchAllDataSequentially = useCallback(async () => {
+        if (!selectedScoreSet) return;
+        
+        // 1. Fetch Leaderboard (updates `leaderboard` state)
+        const currentLeaderboard = await fetchLeaderboard(); 
+        
+        // 2. Fetch Analytics/Export Data
+        await fetchAnalyticsData(currentLeaderboard);
+
+    }, [fetchLeaderboard, fetchAnalyticsData, selectedScoreSet]);
+
+    // Effect 1: Triggered by filter changes (resetting to page 1)
+    useEffect(() => {
+        const isFilterChange = (
+            sortConfig.key !== 'total_score' || sortConfig.direction !== 'desc' ||
+            debouncedTitleSearch || debouncedTagFilter || debouncedMinScore || debouncedMaxScore ||
+            debouncedMunicipalityFilter !== 'all' || challengeStatementFilter.length > 0
+        );
+
+        const shouldResetPage = pagination.currentPage !== 1 && isFilterChange;
+        
+        if (shouldResetPage) {
+            // Reset page on filter change
+            setPagination(p => ({ ...p, currentPage: 1 }));
+            return;
+        }
+
+        // If on page 1 (or after reset), fetch all data sequentially
+        fetchAllDataSequentially();
+
+    }, [
+        selectedScoreSet,
+        pagination.perPage,
+        sortConfig.key,
+        sortConfig.direction,
+        debouncedTitleSearch,
+        debouncedTagFilter,
+        debouncedMinScore,
+        debouncedMaxScore,
+        debouncedMunicipalityFilter,
+        debouncedChallengeStatementString,
+        isChallengeFilterApplicable,
+        availableChallengeStatements.length,
+        pagination.currentPage,
+    ]);
+
+    // Effect 2: Triggered only by page number increments/decrements (i.e., pagination controls).
+    useEffect(() => { 
+        if (pagination.currentPage !== 1) {
+            fetchLeaderboard(); 
+        }
+    }, [pagination.currentPage, fetchLeaderboard]);
+
+
+    /**
+     * Helper to group applications by a dimension value for PDF tables.
+     */
     const getBreakdownGroupedApps = (apps: (FilteredAppRawData & { scoreBreakdown: ScoreBreakdown[] })[], key: BreakdownKey): Map<string, (FilteredAppRawData & { scoreBreakdown: ScoreBreakdown[] })[]> => {
         const groups = new Map<string, (FilteredAppRawData & { scoreBreakdown: ScoreBreakdown[] })[]>();
         const normalizeApplicantCategory = (value: string): string => {
@@ -494,7 +493,7 @@ export function Leaderboard({ config }: { config: { apiKey: string } }) {
             if (v.includes('municipal administration') || v.includes('private organization') || v.includes('civil society') || v.includes('ngo/ingo')) return 'Institution';
             return 'Individual';
         };
-
+        
         apps.forEach(app => {
             let value: string = 'N/A';
             const dim = dimensionMap[key];
@@ -527,7 +526,7 @@ export function Leaderboard({ config }: { config: { apiKey: string } }) {
         });
 
         groups.forEach(group => group.sort((a, b) => b.totalScore - a.totalScore));
-
+        
         return groups;
     };
 
@@ -535,12 +534,12 @@ export function Leaderboard({ config }: { config: { apiKey: string } }) {
      * Prints a universal page number footer on all pages.
      */
     const addUniversalFooter = (doc: jsPDF, fontName: string) => {
-        const pageCount = doc.internal.getNumberOfPages();
+        const pageCount = (doc as any).internal.getNumberOfPages();
         for (let i = 1; i <= pageCount; i++) {
-            doc.setPage(i);
-            doc.setFontSize(8);
-            doc.setFont(fontName, 'normal');
-            doc.text(`Page ${i} of ${pageCount}`, doc.internal.pageSize.width - 10, doc.internal.pageSize.height - 10, { align: 'right' });
+            (doc as any).setPage(i);
+            (doc as any).setFontSize(8);
+            (doc as any).setFont(fontName, 'normal');
+            (doc as any).text(`Page ${i} of ${pageCount}`, (doc as any).internal.pageSize.width - 10, (doc as any).internal.pageSize.height - 10, { align: 'right' });
         }
     };
 
@@ -550,222 +549,230 @@ export function Leaderboard({ config }: { config: { apiKey: string } }) {
             toast({ title: "Export Failed", description: "Please select at least one breakdown category for the PDF report.", variant: "destructive" });
             return;
         }
-        setIsBreakdownModalOpen(false); // Close the selector modal
-        await handleExport('pdf', breakdownsToExport);
+        // CRITICAL FIX: Close modal immediately, then trigger export to prevent UI lockup
+        setIsBreakdownModalOpen(false); 
+        setTimeout(() => {
+            handleExport('pdf', breakdownsToExport);
+        }, 100); 
     };
 
-    const handleExport = async (format: 'csv' | 'xlsx' | 'pdf', selectedBreakdownKeys: BreakdownKey[] = []) => {
-        setIsExporting(true);
-        try {
-            const slugsToExport = selectedSlugs.length > 0 ? selectedSlugs : filteredApps.map(app => app.slug);
-            const appsToExportBase = filteredApps.filter(app => slugsToExport.includes(app.slug));
+   const handleExport = async (format: 'csv' | 'xlsx' | 'pdf', selectedBreakdownKeys: BreakdownKey[] = []) => {
+    setIsExporting(true);
+    try {
+        // FIX: If nothing selected, use ALL filtered apps slugs.
+        const slugsToExport = selectedSlugs.length > 0 ? selectedSlugs : filteredApps.map(app => app.slug);
+        const appsToExportBase = filteredApps.filter(app => slugsToExport.includes(app.slug));
 
-            if (appsToExportBase.length === 0) {
-                toast({ title: "No Data", description: "No applications found to export.", variant: "destructive" });
-                return;
+        if (appsToExportBase.length === 0) {
+            toast({ title: "No Data", description: "No applications found to export.", variant: "destructive" });
+            return;
+        }
+        
+        const fileNameBase = selectedSlugs.length > 0 ? `selected_apps` : 'all_filtered_apps';
+
+        const dataToExport = appsToExportBase.map((app) => {
+            const row: Record<string, any> = {
+                Title: app.title,
+                'Total Score': app.totalScore.toFixed(2),
+                Municipality: app.municipality || 'N/A',
+                Category: app.category?.name?.en_GB || 'Uncategorized',
+                Status: app.status,
+                'Local Status': app.local_status,
+            };
+            app.raw_fields?.forEach((field: any) => {
+                const label = field.label?.en_GB?.replace('*', '') || field.slug;
+                row[label] = extractFormattedValue(app, field.slug);
+            });
+            return row;
+        });
+
+        if (format === 'pdf') {
+            if (typeof window === 'undefined') {
+                throw new Error("PDF export is only supported on the client side.");
             }
+            
+            // detailedApps already contains scoreBreakdown data if fetched successfully via filteredApps
+            const detailedApps = appsToExportBase as (FilteredAppRawData & { scoreBreakdown: ScoreBreakdown[] })[];
 
-            const fileNameBase = selectedSlugs.length > 0 ? `selected_apps` : 'all_filtered_apps';
 
-            const dataToExport = appsToExportBase.map((app) => {
-                const row: Record<string, any> = {
-                    Title: app.title,
-                    'Total Score': app.totalScore.toFixed(2),
-                    Municipality: app.municipality || 'N/A',
-                    Category: app.category?.name?.en_GB || 'Uncategorized',
-                    Status: app.status,
-                    'Local Status': app.local_status,
-                };
-                app.raw_fields?.forEach((field: any) => {
-                    const label = field.label?.en_GB?.replace('*', '') || field.slug;
-                    row[label] = extractFormattedValue(app, field.slug);
-                });
-                return row;
+            const doc = new jsPDF('p', 'mm', 'a4');
+            let y = 10;
+            
+            // --- START Unicode Font Integration ---
+            if (BANGLA_FONT_BASE64) {
+                (doc as any).addFileToVFS(`${BANGLA_FONT_NAME}.ttf`, BANGLA_FONT_BASE64);
+                (doc as any).addFont(`${BANGLA_FONT_NAME}.ttf`, BANGLA_FONT_NAME, 'normal');
+                (doc as any).setFont(BANGLA_FONT_NAME, 'normal');
+                // (doc as any).text(`Report generated using custom font for Bangla/Unicode support.`, 10, y + 2);
+            } else {
+                (doc as any).text(`NOTE: PDF may not display Bangla correctly without embedding the font Base64 string.`, 10, y + 2);
+                (doc as any).setFont('Helvetica', 'normal');
+            }
+            y += 5;
+            // --- END Unicode Font Integration ---
+
+            (doc as any).setFontSize(16);
+            (doc as any).text(`Application Leaderboard Report`, 10, y);
+            y += 7;
+            (doc as any).setFontSize(10);
+            (doc as any).text(`Source: ${currentScoreSetName}`, 10, y);
+            y += 5;
+            (doc as any).text(`Target: ${detailedApps.length} Applications (${selectedSlugs.length > 0 ? 'Selected' : 'All Filtered'})`, 10, y);
+            y += 5;
+
+            const appTableHeaders = ["#", "Title", "Score", "Municipality", "Category"];
+            const mainTableRows: any[] = [];
+            
+            detailedApps.forEach((app, index) => {
+                // Main Row
+                mainTableRows.push([
+                    (index + 1).toString(),
+                    app.title,
+                    app.totalScore.toFixed(2),
+                    app.municipality || 'N/A',
+                    app.category?.name?.en_GB || 'Uncategorized',
+                ]);
+                
+                // Breakdown Row (only if breakdown data exists)
+                if (app.scoreBreakdown && app.scoreBreakdown.length > 0) {
+                    const breakdownText = app.scoreBreakdown.map(
+                        (b) => `${b.name}: ${renderScore(b)}`
+                    ).join(" | ");
+
+                    mainTableRows.push([
+                        { content: `Breakdown: ${breakdownText}`, colSpan: 5, styles: { fontSize: 8, fontStyle: 'italic', fillColor: [240, 240, 240] } }
+                    ]);
+                }
             });
 
-            if (format === 'pdf') {
-                if (typeof window === 'undefined') {
-                    throw new Error("PDF export is only supported on the client side.");
-                }
 
-                const detailedApps = appsToExportBase.map(app => {
-                    const detailed = leaderboard.find(e => e.slug === app.slug);
-                    return detailed ? { ...app, scoreBreakdown: detailed.scoreBreakdown } : app;
-                }) as (FilteredAppRawData & { scoreBreakdown: ScoreBreakdown[] })[];
-
-
-                const doc = new jsPDF('p', 'mm', 'a4');
-                let y = 10;
-
-                // --- START Unicode Font Integration ---
-                if (BANGLA_FONT_BASE64) {
-                    doc.addFileToVFS(`${BANGLA_FONT_NAME}.ttf`, BANGLA_FONT_BASE64);
-                    doc.addFont(`${BANGLA_FONT_NAME}.ttf`, BANGLA_FONT_NAME, 'normal');
-                    doc.setFont(BANGLA_FONT_NAME, 'normal');
-                    // doc.text(`Report generated using custom font for Bangla/Unicode support.`, 10, y + 2);
-                } else {
-                    doc.text(`NOTE: PDF may not display Bangla correctly without embedding the font Base64 string.`, 10, y + 2);
-                    doc.setFont('Helvetica', 'normal');
-                }
-                y += 5;
-                // --- END Unicode Font Integration ---
-
-                doc.setFontSize(16);
-                doc.text(`Application Leaderboard Report`, 10, y);
-                y += 7;
-                doc.setFontSize(10);
-                doc.text(`Source: ${currentScoreSetName}`, 10, y);
-                y += 5;
-                doc.text(`Target: ${detailedApps.length} Applications (${selectedSlugs.length > 0 ? 'Selected' : 'All Filtered'})`, 10, y);
-                y += 5;
-
-                const appTableHeaders = ["#", "Title", "Score", "Municipality", "Category"];
-                const mainTableRows: any[] = [];
-
-                detailedApps.forEach((app, index) => {
-                    // Main Row
-                    mainTableRows.push([
-                        (index + 1).toString(),
-                        app.title,
-                        app.totalScore.toFixed(2),
-                        app.municipality || 'N/A',
-                        app.category?.name?.en_GB || 'Uncategorized',
-                    ]);
-
-                    // Breakdown Row (only if breakdown data exists)
-                    if (app.scoreBreakdown && app.scoreBreakdown.length > 0) {
-                        const breakdownText = app.scoreBreakdown.map(
-                            (b) => `${b.name}: ${renderScore(b)}`
-                        ).join(" | ");
-
-                        mainTableRows.push([
-                            { content: `Breakdown: ${breakdownText}`, colSpan: 5, styles: { fontSize: 8, fontStyle: 'italic', fillColor: [240, 240, 240] } }
-                        ]);
+            // --- 1. Main Leaderboard Table (All Selected/Filtered Apps with breakdown) ---
+            autoTable(doc, {
+                startY: y,
+                head: [appTableHeaders],
+                body: mainTableRows,
+                theme: 'striped',
+                headStyles: { fillColor: [52, 73, 94], font: BANGLA_FONT_NAME, fontStyle: 'normal' },
+                styles: { font: BANGLA_FONT_NAME, fontStyle: 'normal', cellWidth: 'wrap' },
+                columnStyles: {
+                    1: { cellWidth: 70 }, // Title column width (to enable wrap)
+                    0: { cellWidth: 10 },
+                    2: { cellWidth: 20 },
+                    3: { cellWidth: 35 },
+                    4: { cellWidth: 35 },
+                },
+                margin: { top: 5 },
+                didParseCell: (data: any) => { // Cast to any to access row.raw
+                    // Apply full width and specific style to breakdown rows
+                    if (data.row.raw[0]?.styles?.colSpan === 5) {
+                        data.cell.colSpan = 5;
+                        data.cell.styles = { ...data.cell.styles, ...data.row.raw[0].styles, lineColor: [200, 200, 200] };
                     }
-                });
+                }
+            });
+
+            // Start Y for the breakdown section (must be based on the end of the previous table)
+            let currentY = (doc as any).lastAutoTable.finalY + 10;
 
 
-                // --- 1. Main Leaderboard Table (All Selected/Filtered Apps with breakdown) ---
-                autoTable(doc, {
-                    startY: y,
-                    head: [appTableHeaders],
-                    body: mainTableRows,
-                    theme: 'striped',
-                    headStyles: { fillColor: [52, 73, 94], font: BANGLA_FONT_NAME, fontStyle: 'normal' },
-                    styles: { font: BANGLA_FONT_NAME, fontStyle: 'normal', cellWidth: 'wrap' },
-                    columnStyles: {
-                        1: { cellWidth: 70 }, // Title column width (to enable wrap)
-                        0: { cellWidth: 10 },
-                        2: { cellWidth: 20 },
-                        3: { cellWidth: 35 },
-                        4: { cellWidth: 35 },
-                    },
-                    margin: { top: 5 },
-                    didParseCell: (data) => {
-                        // Apply full width and specific style to breakdown rows
-                        if (data.row.raw[0]?.styles?.colSpan === 5) {
-                            data.cell.colSpan = 5;
-                            data.cell.styles = { ...data.cell.styles, ...data.row.raw[0].styles, lineColor: [200, 200, 200] };
-                        }
-                    }
-                });
+            // --- 2. Multiple Breakdown Tables (Table per breakdown value) ---
+            const PAGE_BOTTOM_LIMIT = (doc as any).internal.pageSize.height - 35; 
 
-                // Start Y for the breakdown section (must be based on the end of the previous table)
-                let currentY = (doc as any).lastAutoTable.finalY + 10;
+            // Loop through each major breakdown dimension (municipality, pscode, etc.)
+            for (const key of selectedBreakdownKeys) {
+                const groups = getBreakdownGroupedApps(detailedApps, key);
+                const breakdownTitle = dimensionMap[key].label;
+                const sortedGroups = Array.from(groups.keys()).sort();
 
+                if (sortedGroups.length === 0 || (sortedGroups.length === 1 && sortedGroups[0] === 'N/A')) continue;
+                
+                // Add a page break to cleanly start the next DIMENSION report
+                if (currentY > PAGE_BOTTOM_LIMIT) {
+                    (doc as any).addPage(); 
+                    currentY = 10;
+                }
+                
+                (doc as any).setFontSize(16);
+                (doc as any).text(`Breakdown Analysis: ${breakdownTitle}`, 10, currentY);
+                currentY += 10;
 
-                // --- 2. Multiple Breakdown Tables (Table per breakdown value) ---
-                const PAGE_BOTTOM_LIMIT = doc.internal.pageSize.height - 35;
+                // Loop through each VALUE group (e.g., "Dhaka", "Male", etc.)
+                for (const groupName of sortedGroups) {
+                    if (groupName === 'N/A') continue;
 
-                // Loop through each major breakdown dimension (municipality, pscode, etc.)
-                for (const key of selectedBreakdownKeys) {
-                    const groups = getBreakdownGroupedApps(detailedApps, key);
-                    const breakdownTitle = dimensionMap[key].label;
-                    const sortedGroups = Array.from(groups.keys()).sort();
-
-                    if (sortedGroups.length === 0 || (sortedGroups.length === 1 && sortedGroups[0] === 'N/A')) continue;
-
-                    // Add a page break to cleanly start the next DIMENSION report
+                    const groupApps = groups.get(groupName) || [];
+                    if (groupApps.length === 0) continue;
+                    
+                    // CRITICAL FIX: Check if the title and minimum space for a small table will fit.
                     if (currentY > PAGE_BOTTOM_LIMIT) {
-                        doc.addPage();
+                        (doc as any).addPage();
                         currentY = 10;
                     }
 
-                    doc.setFontSize(16);
-                    doc.text(`Breakdown Analysis: ${breakdownTitle}`, 10, currentY);
-                    currentY += 10;
+                    (doc as any).setFontSize(12);
+                    (doc as any).text(`${breakdownTitle} Value: ${groupName} (${groupApps.length} Applications)`, 10, currentY);
+                    currentY += 5; // Advance Y after printing the title line
 
-                    // Loop through each VALUE group (e.g., "Dhaka", "Male", etc.)
-                    for (const groupName of sortedGroups) {
-                        if (groupName === 'N/A') continue;
+                    // Data for the sub-table (Title, Score, Category)
+                    const groupTableData = groupApps.map((app, index) => ([
+                        (index + 1).toString(),
+                        app.title,
+                        app.totalScore.toFixed(2),
+                        app.category?.name?.en_GB || 'Uncategorized',
+                    ]));
+                    
+                    autoTable(doc, {
+                        startY: currentY, // Table starts directly after the title
+                        head: [["#", "Application Title", "Total Score", "Category"]],
+                        body: groupTableData,
+                        theme: 'striped',
+                        headStyles: { fillColor: [22, 160, 133], font: BANGLA_FONT_NAME, fontStyle: 'normal' },
+                        styles: { font: BANGLA_FONT_NAME, fontStyle: 'normal', cellWidth: 'wrap' },
+                        columnStyles: {
+                            1: { cellWidth: 80 }, // Title column width (to enable wrap)
+                            0: { cellWidth: 10 },
+                            2: { cellWidth: 20 },
+                            3: { cellWidth: 40 },
+                        },
+                        margin: { top: 5 },
+                    });
 
-                        const groupApps = groups.get(groupName) || [];
-                        if (groupApps.length === 0) continue;
-
-                        // CRITICAL FIX: Check if the title and minimum space for a small table will fit.
-                        if (currentY > PAGE_BOTTOM_LIMIT) {
-                            doc.addPage();
-                            currentY = 10;
-                        }
-
-                        doc.setFontSize(12);
-                        doc.text(`${breakdownTitle} Value: ${groupName} (${groupApps.length} Applications)`, 10, currentY);
-                        currentY += 5; // Advance Y after printing the title line
-
-                        // Data for the sub-table (Title, Score, Category)
-                        const groupTableData = groupApps.map((app, index) => ([
-                            (index + 1).toString(),
-                            app.title,
-                            app.totalScore.toFixed(2),
-                            app.category?.name?.en_GB || 'Uncategorized',
-                        ]));
-
-                        autoTable(doc, {
-                            startY: currentY, // Table starts directly after the title
-                            head: [["#", "Application Title", "Total Score", "Category"]],
-                            body: groupTableData,
-                            theme: 'striped',
-                            headStyles: { fillColor: [22, 160, 133], font: BANGLA_FONT_NAME, fontStyle: 'normal' },
-                            styles: { font: BANGLA_FONT_NAME, fontStyle: 'normal', cellWidth: 'wrap' },
-                            columnStyles: {
-                                1: { cellWidth: 80 }, // Title column width (to enable wrap)
-                                0: { cellWidth: 10 },
-                                2: { cellWidth: 20 },
-                                3: { cellWidth: 40 },
-                            },
-                            margin: { top: 5 },
-                        });
-
-                        // Update Y position for the NEXT title/element
-                        currentY = (doc as any).lastAutoTable.finalY + 10;
-                    }
+                    // Update Y position for the NEXT title/element
+                    currentY = (doc as any).lastAutoTable.finalY + 10;
                 }
-
-                // --- Finalizing PDF: Add Universal Footer ---
-                addUniversalFooter(doc, BANGLA_FONT_NAME);
-                doc.save(`${fileNameBase}_full_breakdown_report.pdf`);
-            } else {
-                const worksheet = XLSX.utils.json_to_sheet(dataToExport);
-                const workbook = XLSX.utils.book_new();
-                XLSX.utils.book_append_sheet(workbook, worksheet, "Applications");
-                XLSX.writeFile(workbook, `${fileNameBase}.${format}`);
             }
 
-            toast({ title: "Export successful!", description: `${appsToExportBase.length} applications exported to ${format.toUpperCase()}.` });
-        } catch (err: any) {
-            console.error(err);
-            toast({ title: "Export Failed", description: `Could not generate export file: ${err.message}`, variant: "destructive" });
-        } finally {
-            setIsExporting(false);
-            setSelectedSlugs([]);
+            // --- Finalizing PDF: Add Universal Footer ---
+            addUniversalFooter(doc as any, BANGLA_FONT_NAME);
+            (doc as any).save(`${fileNameBase}_full_breakdown_report.pdf`);
+        } else {
+            const worksheet = XLSX.utils.json_to_sheet(dataToExport);
+            const workbook = XLSX.utils.book_new();
+            XLSX.utils.book_append_sheet(workbook, worksheet, "Applications");
+            XLSX.writeFile(workbook, `${fileNameBase}.${format}`);
         }
-    };
+
+        toast({ title: "Export successful!", description: `${appsToExportBase.length} applications exported to ${format.toUpperCase()}.` });
+    } catch (err: any) {
+        console.error(err);
+        toast({ title: "Export Failed", description: `Could not generate export file: ${err.message}`, variant: "destructive" });
+    } finally {
+        setIsExporting(false);
+        setSelectedSlugs([]);
+    }
+};
 
 
     const handleViewDetails = (slug: string) => { setSelectedAppSlug(slug); setIsModalOpen(true); };
+    
+    // --- FIX: Redeclared isAllSelected inside component scope ---
+    const isAllSelected = useMemo(() => {
+        return leaderboard.length > 0 && selectedSlugs.length === leaderboard.length;
+    }, [leaderboard, selectedSlugs]);
+
     const handleSort = (key: SortableKeys) => { setSortConfig(prev => ({ key, direction: prev.key === key && prev.direction === 'asc' ? 'desc' : 'asc' })); };
     const renderSortArrow = (column: SortableKeys) => (sortConfig.key !== column ? <ArrowUpDown className="ml-2 h-4 w-4 text-muted-foreground/50" /> : sortConfig.direction === 'asc' ? '▲' : '▼');
-
+    
     // Updated logic for select all: only selects applications *visible* on the current page.
     const handleSelectRow = (slug: string, checked: boolean) => setSelectedSlugs(prev => checked ? [...prev, slug] : prev.filter(s => s !== slug));
     const handleSelectAll = (checked: boolean) => {
@@ -779,257 +786,95 @@ export function Leaderboard({ config }: { config: { apiKey: string } }) {
             setSelectedSlugs(prev => prev.filter(slug => !currentPageSlugs.includes(slug)));
         }
     };
-
+    
     const cleanMunicipalities = municipalities.filter(muni => muni && muni.trim() !== "");
     const isDetailedView = selectedScoreSet !== TECHNICAL_SLUG && selectedScoreSet !== JURY_SLUG;
     const isMultiSelect = municipalityFilter === 'all';
-
+    
     const singlePsValue = !isMultiSelect && challengeStatementFilter.length === 0 ? ALL_STATEMENTS_VALUE : challengeStatementFilter[0];
     const handleSingleSelectChange = (tag: string) => { setChallengeStatementFilter(tag === ALL_STATEMENTS_VALUE ? [] : [tag]); };
     const handleMultiSelectClick = (tag: string) => { setChallengeStatementFilter(prev => prev.includes(tag) ? prev.filter(t => t !== tag) : [...prev, tag]); };
-
+    
     const totalSelected = selectedSlugs.length;
-    const isAllSelected = totalSelected > 0 && totalSelected === leaderboard.length;
-    // const exportTargetCount = selectedSlugs.length > 0 ? selectedSlugs.length : filteredApps.length; // Moved above
+    const exportTargetCount = selectedSlugs.length > 0 ? selectedSlugs.length : filteredApps.length;
     const currentScoreSetNameForDisplay = useMemo(() => scoreSets.find(s => s.slug === selectedScoreSet)?.name.en_GB || "Loading...", [scoreSets, selectedScoreSet]);
 
     return (
         <>
-            <Card className="mt-6 shadow-lg">
-                <CardHeader>
-                    <div className="md:flex justify-between items-start">
-                        <div>
-                            <div className='flex items-center gap-2'>
-                                <CardTitle className="flex items-center gap-2"><Trophy className="w-6 h-6" /> Leaderboard & Analytics</CardTitle>
-                                <Link href={"/scoring-analysis"}><Button variant="destructive" >
-                                    <ChartNoAxesCombined className="mr-2 h-4 w-4" />Scoring Analysis
-                                </Button></Link>
+        <Card className="mt-6 shadow-lg">
+            <CardHeader>
+                <div className="md:flex justify-between items-start">
+                    <div>
+                        <div className='flex items-center gap-2'>
+                            <CardTitle className="flex items-center gap-2"><Trophy className="w-6 h-6" /> Leaderboard & Analytics</CardTitle>
+                        <Link href={"/scoring-analysis"}><Button variant="destructive" >
+                            <ChartNoAxesCombined className="mr-2 h-4 w-4" />Scoring Analysis
+                        </Button></Link>
 
-                            </div>
-
-                            <CardDescription>Analyze and manage applications synchronized from GoodGrants.</CardDescription>
                         </div>
-                        <div className="flex items-center gap-2 mt-4 md:mt-0 flex-wrap">
-                            <GenerateReportButton
-                                filteredApps={filteredApps}
-                                municipalityFilter={debouncedMunicipalityFilter}
-                                challengeStatementFilter={debouncedChallengeStatementString}
-                                lastSyncTime={lastSyncTime}
-                                scoreSetName={currentScoreSetNameForDisplay}
-                                minScore={debouncedMinScore}
-                                maxScore={debouncedMaxScore}
-                                disabled={isAnySyncing || isAnalyticsLoading}
-                                skipScoreDistribution={isScoreFilterApplied}
-                            />
-
-                            <AlertDialog open={isConfirmModalOpen} onOpenChange={setIsConfirmModalOpen}>
-                                <AlertDialogTrigger asChild>
-                                    <Button variant="destructive" disabled={isAnySyncing}>
-                                        <RefreshCw className="mr-2 h-4 w-4" /> Sync All
-                                    </Button>
-                                </AlertDialogTrigger>
-                                <AlertDialogContent>
-                                    <AlertDialogHeader>
-                                        <AlertDialogTitle>Are you absolutely sure?</AlertDialogTitle>
-                                        <AlertDialogDescription>
-                                            This action will **truncate the entire leaderboard_entries table** in your database and then initiate a sync for **all** available score sets from the API. This process is resource-intensive and will take a significant amount of time.
-                                        </AlertDialogDescription>
-                                    </AlertDialogHeader>
-                                    <AlertDialogFooter>
-                                        <AlertDialogCancel disabled={isAnySyncing}>Cancel</AlertDialogCancel>
-                                        <AlertDialogAction onClick={handleSyncAll} disabled={isAnySyncing}>
-                                            {isSyncingAll ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <RefreshCw className="mr-2 h-4 w-4" />}
-                                            {isSyncingAll ? 'Syncing All...' : 'Confirm Full Sync'}
-                                        </AlertDialogAction>
-                                    </AlertDialogFooter>
-                                </AlertDialogContent>
-                            </AlertDialog>
-
-                            <Button onClick={handleSync} disabled={isAnySyncing || !selectedScoreSet}>
-                                {isSyncing ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <RefreshCw className="mr-2 h-4 w-4" />}
-                                {isSyncing ? 'Syncing Current...' : 'Sync Current'}
-                            </Button>
-
-                            <Select value={selectedScoreSet} onValueChange={(slug) => {
-                                const set = scoreSets.find(s => s.slug === slug);
-                                if (set) setCurrentScoreSetName(set.name.en_GB);
-                                setSelectedScoreSet(slug);
-                            }} disabled={isLoadingSets || isAnySyncing}>
-                                <SelectTrigger className="w-[220px]"><SelectValue placeholder="Select score set" /></SelectTrigger>
-                                <SelectContent>{scoreSets.map(set => <SelectItem key={set.slug} value={set.slug}>{set.name.en_GB}</SelectItem>)}</SelectContent>
-                            </Select>
-                        </div>
+                        
+                        <CardDescription>Analyze and manage applications synchronized from GoodGrants.</CardDescription>
                     </div>
-                </CardHeader>
-                <CardContent>
-                    <Tabs defaultValue="leaderboard">
-                        <TabsList className="grid w-full grid-cols-2">
-                            <TabsTrigger value="leaderboard">Leaderboard</TabsTrigger>
-                            <TabsTrigger value="analytics">Analytics</TabsTrigger>
-                        </TabsList>
-                        <TabsContent value="leaderboard">
-                            <div ref={tableContainerRef}>
-                                <div className="my-4 p-4 border rounded-lg bg-muted/40">
-                                    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5 gap-4 mb-4">
-                                        <Input placeholder="Search title..." value={titleSearch} onChange={(e) => setTitleSearch(e.target.value)} className="pl-4" disabled={isAnySyncing} />
-                                        <Select value={municipalityFilter} onValueChange={setMunicipalityFilter} disabled={isAnySyncing || municipalities.length === 0}>
-                                            <SelectTrigger><SelectValue placeholder="Filter Municipality" /></SelectTrigger>
-                                            <SelectContent><SelectItem value="all">All Municipalities</SelectItem>{cleanMunicipalities.map(muni => <SelectItem key={muni} value={muni}>{muni}</SelectItem>)}</SelectContent>
-                                        </Select>
-                                        <Input type="number" placeholder="Min Score" value={minScore} onChange={(e) => setMinScore(e.target.value)} disabled={isAnySyncing} />
-                                        <Input type="number" placeholder="Max Score" value={maxScore} onChange={(e) => setMaxScore(e.target.value)} disabled={isAnySyncing} />
-                                        <DropdownMenu>
-                                            <DropdownMenuTrigger asChild>
-                                                <Button disabled={isExporting || isLoading || isAnySyncing || isAnalyticsLoading} className="w-full">
-                                                    {isExporting ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <FileDown className="mr-2 h-4 w-4" />}
-                                                    Export ({exportTargetCount} Apps)
-                                                </Button>
-                                            </DropdownMenuTrigger>
-                                            <DropdownMenuContent align="end">
-                                                <DropdownMenuItem onClick={() => handleExport("csv")}>As CSV</DropdownMenuItem>
-                                                <DropdownMenuItem onClick={() => handleExport("xlsx")}>As XLSX</DropdownMenuItem>
-                                                <DropdownMenuItem onSelect={() => setIsBreakdownModalOpen(true)}>As PDF Report</DropdownMenuItem>
-                                            </DropdownMenuContent>
-                                        </DropdownMenu>
+                    <div className="flex items-center gap-2 mt-4 md:mt-0 flex-wrap">
+                        <GenerateReportButton
+                            filteredApps={filteredApps}
+                            municipalityFilter={debouncedMunicipalityFilter}
+                            challengeStatementFilter={debouncedChallengeStatementString}
+                            lastSyncTime={lastSyncTime}
+                            scoreSetName={currentScoreSetNameForDisplay}
+                            minScore={debouncedMinScore}
+                            maxScore={debouncedMaxScore}
+                            disabled={isAnySyncing || isAnalyticsLoading}
+                            skipScoreDistribution={isScoreFilterApplied}
+                        />
 
-                                    </div>
-                                    {isChallengeFilterApplicable && availableChallengeStatements.length > 0 && (
-                                        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5 gap-4">
-                                            {isMultiSelect ? (
-                                                <div className="flex flex-col space-y-1 xl:col-span-full">
-                                                    <Label className="text-sm font-medium leading-none">Challenge Statements (Multi-select)</Label>
-                                                    <div className="flex flex-wrap gap-2 p-2 border rounded-md bg-white overflow-y-auto max-h-32">
-                                                        <Button
-                                                            variant={challengeStatementFilter.length === 0 ? "default" : "outline"}
-                                                            size="sm"
-                                                            onClick={() => setChallengeStatementFilter([])}
-                                                            disabled={isAnySyncing}
-                                                            className='text-xs'
-                                                        >
-                                                            All Statements
-                                                        </Button>
-                                                        {availableChallengeStatements.map(cs => (
-                                                            <Button
-                                                                key={cs.tag}
-                                                                variant={challengeStatementFilter.includes(cs.tag) ? "default" : "outline"}
-                                                                size="sm"
-                                                                onClick={() => handleMultiSelectClick(cs.tag)}
-                                                                disabled={isAnySyncing}
-                                                                className='text-xs'
-                                                            >
-                                                                {cs.tag}
-                                                            </Button>
-                                                        ))}
-                                                    </div>
-                                                </div>
-                                            ) : (
-                                                <Select
-                                                    value={singlePsValue}
-                                                    onValueChange={handleSingleSelectChange}
-                                                    disabled={isAnySyncing || availableChallengeStatements.length === 0}
-                                                >
-                                                    <SelectTrigger><SelectValue placeholder="Filter Challenge Statement (Single)" /></SelectTrigger>
-                                                    <SelectContent>
-                                                        <SelectItem value={ALL_STATEMENTS_VALUE}>All Statements</SelectItem>
-                                                        {availableChallengeStatements.map(cs => (
-                                                            <SelectItem key={cs.tag} value={cs.tag}>{cs.name}</SelectItem>
-                                                        ))}
-                                                    </SelectContent>
-                                                </Select>
-                                            )}
-                                            <div className='hidden sm:block' />
-                                            <div className='hidden sm:block' />
-                                            <div className='hidden sm:block' />
-                                        </div>
-                                    )}
-                                </div>
+                        <AlertDialog open={isConfirmModalOpen} onOpenChange={setIsConfirmModalOpen}>
+                            <AlertDialogTrigger asChild>
+                                <Button variant="destructive" disabled={isAnySyncing} onClick={handleSyncAll}>
+                                    <RefreshCw className="mr-2 h-4 w-4" /> Sync All
+                                </Button>
+                            </AlertDialogTrigger>
+                            <AlertDialogContent>
+                                <AlertDialogHeader>
+                                    <AlertDialogTitle>Are you absolutely sure?</AlertDialogTitle>
+                                    <AlertDialogDescription>
+                                        This action will **truncate the entire leaderboard_entries table** in your database and then initiate a sync for **all** available score sets from the API. This process is resource-intensive and will take a significant amount of time.
+                                    </AlertDialogDescription>
+                                </AlertDialogHeader>
+                                <AlertDialogFooter>
+                                    <AlertDialogCancel disabled={isAnySyncing}>Cancel</AlertDialogCancel>
+                                    <AlertDialogAction onClick={handleSyncAll} disabled={isAnySyncing}>
+                                        {isSyncingAll ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <RefreshCw className="mr-2 h-4 w-4" />}
+                                        {isSyncingAll ? 'Syncing All...' : 'Confirm Full Sync'}
+                                    </AlertDialogAction>
+                                </AlertDialogFooter>
+                            </AlertDialogContent>
+                        </AlertDialog>
 
-                                <ManagerPaginationControls
-                                    currentPage={pagination.currentPage}
-                                    lastPage={pagination.lastPage}
-                                    total={pagination.total}
-                                    perPage={pagination.perPage}
-                                    changePage={handlePageChange}
-                                    setPerPage={handlePerPageChange}
-                                    disabled={isLoading || isAnySyncing}
-                                />
+                        <Button onClick={handleSync} disabled={isAnySyncing || !selectedScoreSet}>
+                            {isSyncing ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <RefreshCw className="mr-2 h-4 w-4" />}
+                            {isSyncing ? 'Syncing Current...' : 'Sync Current'}
+                        </Button>
 
-                                <div className="rounded-md border overflow-x-auto">
-                                    <Table className="min-w-[700px]">
-                                        <TableHeader><TableRow>
-                                            <TableHead className="w-12">
-                                                <Checkbox
-                                                    checked={isAllSelected}
-                                                    onCheckedChange={handleSelectAll}
-                                                    disabled={leaderboard.length === 0 || isLoading || isAnySyncing}
-                                                />
-                                            </TableHead>
-                                            <TableHead className="w-16">Rank</TableHead>
-                                            <TableHead className="cursor-pointer w-[30%]" onClick={() => handleSort('title')}>Application Title & Tags {renderSortArrow('title')}</TableHead>
-                                            {isDetailedView && (<TableHead className="text-center w-[150px] border-l">Score Breakdown</TableHead>)}
-                                            {isChallengeFilterApplicable && (<TableHead className="w-[150px] border-l">Problem Statement</TableHead>)}
-                                            <TableHead className="cursor-pointer text-center w-[100px] border-l" onClick={() => handleSort('total_score')}>Total Score {renderSortArrow('total_score')}</TableHead>
-                                            <TableHead className="w-16 text-center">Actions</TableHead>
-                                        </TableRow></TableHeader>
-                                        <TableBody>
-                                            {isLoading || isAnySyncing ? Array.from({ length: 10 }).map((_, i) => <SkeletonRow key={i} />)
-                                                : error ? <TableRow><TableCell colSpan={6} className="h-24 text-center text-red-500"><AlertCircle className="mx-auto h-6 w-6 mb-2" />{error}</TableCell></TableRow>
-                                                    : leaderboard.length > 0 ? leaderboard.map((entry, index) => {
-                                                        const rank = (pagination.currentPage - 1) * pagination.perPage + index + 1;
-                                                        const psCodeDisplay = entry.tags.find(t => availableChallengeStatements.some(cs => cs.tag === t)) || 'N/A';
-                                                        const isSelected = selectedSlugs.includes(entry.slug);
-
-                                                        return (<TableRow key={entry.slug} data-state={isSelected && "selected"}>
-                                                            <TableCell><Checkbox checked={selectedSlugs.includes(entry.slug)} onCheckedChange={(c) => handleSelectRow(entry.slug, !!c)} /></TableCell>
-
-                                                            <TableCell className="font-bold text-lg">{rank}</TableCell>
-                                                            <TableCell><div>{entry.title}</div><div className="flex flex-wrap gap-1 mt-2">{entry.tags.map(tag => <Badge key={tag} variant="secondary">{tag}</Badge>)}</div></TableCell>
-
-                                                            {isDetailedView && (
-                                                                <TableCell className="text-center border-l">
-                                                                    <TooltipProvider><Tooltip>
-                                                                        <TooltipTrigger asChild>
-                                                                            <ScrollText className='h-4 w-4 mx-auto text-muted-foreground cursor-help' />
-                                                                        </TooltipTrigger>
-                                                                        <TooltipContent>
-                                                                            <p className="font-bold">Breakdown:</p>
-                                                                            {entry.scoreBreakdown.map(c => <div key={c.name}>{c.name}: <span className="font-mono">{renderScore(c)}</span></div>)}
-                                                                        </TooltipContent>
-                                                                    </Tooltip></TooltipProvider>
-                                                                </TableCell>
-                                                            )}
-                                                            {isChallengeFilterApplicable && <TableCell className="border-l text-sm"><Badge variant="outline">{psCodeDisplay}</Badge></TableCell>}
-                                                            <TableCell className="text-center border-l">
-                                                                <TooltipProvider><Tooltip>
-                                                                    <TooltipTrigger asChild><span className="cursor-help font-semibold text-lg text-green-600">{entry.totalScore.toFixed(2)}</span></TooltipTrigger>
-                                                                    {!isDetailedView && (
-                                                                        <TooltipContent>
-                                                                            <p className="font-bold">Breakdown:</p>
-                                                                            {entry.scoreBreakdown.map(c => <div key={c.name}>{c.name}: <span className="font-mono">{renderScore(c)}</span></div>)}
-                                                                        </TooltipContent>
-                                                                    )}
-                                                                </Tooltip></TooltipProvider>
-                                                            </TableCell>
-                                                            <TableCell className="text-center"><Button variant="ghost" size="icon" onClick={() => handleViewDetails(entry.slug)}><Eye className="h-4 w-4" /></Button></TableCell>
-                                                        </TableRow>);
-                                                    })
-                                                        : <TableRow><TableCell colSpan={6} className="h-24 text-center">No results found for the current filters.</TableCell></TableRow>}
-                                        </TableBody>
-                                    </Table>
-                                </div>
-
-                                <ManagerPaginationControls
-                                    currentPage={pagination.currentPage}
-                                    lastPage={pagination.lastPage}
-                                    total={pagination.total}
-                                    perPage={pagination.perPage}
-                                    changePage={handlePageChange}
-                                    setPerPage={handlePerPageChange}
-                                    disabled={isLoading || isAnySyncing}
-                                />
-                            </div>
-                        </TabsContent>
-                        <TabsContent value="analytics">
+                        <Select value={selectedScoreSet} onValueChange={(slug) => {
+                            const set = scoreSets.find(s => s.slug === slug);
+                            if (set) setCurrentScoreSetName(set.name.en_GB);
+                            setSelectedScoreSet(slug);
+                        }} disabled={isLoadingSets || isAnySyncing}>
+                            <SelectTrigger className="w-[220px]"><SelectValue placeholder="Select score set" /></SelectTrigger>
+                            <SelectContent>{scoreSets.map(set => <SelectItem key={set.slug} value={set.slug}>{set.name.en_GB}</SelectItem>)}</SelectContent>
+                        </Select>
+                    </div>
+                </div>
+            </CardHeader>
+            <CardContent>
+                <Tabs defaultValue="leaderboard">
+                    <TabsList className="grid w-full grid-cols-2">
+                        <TabsTrigger value="leaderboard">Leaderboard</TabsTrigger>
+                        <TabsTrigger value="analytics">Analytics</TabsTrigger>
+                    </TabsList>
+                    <TabsContent value="leaderboard">
+                        <div ref={tableContainerRef}>
                             <div className="my-4 p-4 border rounded-lg bg-muted/40">
                                 <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5 gap-4 mb-4">
                                     <Input placeholder="Search title..." value={titleSearch} onChange={(e) => setTitleSearch(e.target.value)} className="pl-4" disabled={isAnySyncing} />
@@ -1039,12 +884,20 @@ export function Leaderboard({ config }: { config: { apiKey: string } }) {
                                     </Select>
                                     <Input type="number" placeholder="Min Score" value={minScore} onChange={(e) => setMinScore(e.target.value)} disabled={isAnySyncing} />
                                     <Input type="number" placeholder="Max Score" value={maxScore} onChange={(e) => setMaxScore(e.target.value)} disabled={isAnySyncing} />
-                                    <Select value={selectedBreakdown} onValueChange={(v) => setSelectedBreakdown(v as BreakdownKey)} disabled={isAnySyncing || isAnalyticsLoading}>
-                                        <SelectTrigger><SelectValue placeholder="Select Breakdown Dimension" /></SelectTrigger>
-                                        <SelectContent>
-                                            {BREAKDOWN_OPTIONS.map(opt => <SelectItem key={opt.value} value={opt.value}>{opt.label}</SelectItem>)}
-                                        </SelectContent>
-                                    </Select>
+                                    <DropdownMenu>
+                                        <DropdownMenuTrigger asChild>
+                                            <Button disabled={isExporting || isLoading || isAnySyncing || isAnalyticsLoading} className="w-full">
+                                                {isExporting ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <FileDown className="mr-2 h-4 w-4" />}
+                                                Export ({exportTargetCount} Apps)
+                                            </Button>
+                                        </DropdownMenuTrigger>
+                                        <DropdownMenuContent align="end">
+                                            <DropdownMenuItem onClick={() => handleExport("csv")}>As CSV</DropdownMenuItem>
+                                            <DropdownMenuItem onClick={() => handleExport("xlsx")}>As XLSX</DropdownMenuItem>
+                                            <DropdownMenuItem onSelect={() => setIsBreakdownModalOpen(true)}>As PDF Report</DropdownMenuItem>
+                                        </DropdownMenuContent>
+                                    </DropdownMenu>
+
                                 </div>
                                 {isChallengeFilterApplicable && availableChallengeStatements.length > 0 && (
                                     <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5 gap-4">
@@ -1096,68 +949,221 @@ export function Leaderboard({ config }: { config: { apiKey: string } }) {
                                     </div>
                                 )}
                             </div>
-                            <SunburstAnalyticsCard
-                                filteredApps={filteredApps}
-                                isLoading={isAnalyticsLoading}
-                                municipalityFilter={debouncedMunicipalityFilter}
-                            />
-                            <ScoreAnalyticsCard
-                                leaderboard={filteredApps as unknown as AnalyticsLeaderboardEntry[]}
-                                municipalityFilter={debouncedMunicipalityFilter}
-                                isLoading={isAnalyticsLoading}
-                                scoreSetName={currentScoreSetNameForDisplay}
-                                filteredApps={filteredApps}
-                                skipScoreDistribution={isScoreFilterApplied}
-                            />
-                            <LeaderboardBreakdowns
-                                filteredApps={filteredApps}
-                                isLoading={isAnalyticsLoading}
-                                selectedBreakdown={selectedBreakdown}
-                            />
-                        </TabsContent>
-                    </Tabs>
-                </CardContent>
-                <ApplicationDetailsInquiryModal isOpen={isModalOpen} onClose={() => setIsModalOpen(false)} applicationSlug={selectedAppSlug} />
-            </Card>
 
-            {/* Breakdown Selection Modal for PDF Export */}
-            <Dialog open={isBreakdownModalOpen} onOpenChange={setIsBreakdownModalOpen}>
-                <DialogContent>
-                    <DialogHeader>
-                        <DialogTitle className='flex items-center gap-2'><Settings2 className='h-5 w-5' /> Select PDF Breakdown Tables</DialogTitle>
-                        <DialogDescription>
-                            Choose which breakdown tables you want to include after the main application list in the PDF report.
-                        </DialogDescription>
-                    </DialogHeader>
-                    <div className='grid grid-cols-2 gap-4 py-4'>
-                        {ALL_BREAKDOWN_KEYS.map((key) => (
-                            <div key={key} className='flex items-center space-x-2'>
-                                <Checkbox
-                                    id={key}
-                                    checked={breakdownsToExport.includes(key)}
-                                    onCheckedChange={(checked) => {
-                                        setBreakdownsToExport(prev =>
-                                            checked ? [...prev, key] : prev.filter(k => k !== key)
-                                        );
-                                    }}
-                                />
-                                <label
-                                    htmlFor={key}
-                                    className="text-sm font-medium leading-none cursor-pointer"
-                                >
-                                    {BREAKDOWN_OPTIONS_MAP[key]}
-                                </label>
+                            <ManagerPaginationControls
+                                currentPage={pagination.currentPage}
+                                lastPage={pagination.lastPage}
+                                total={pagination.total}
+                                perPage={pagination.perPage}
+                                changePage={handlePageChange}
+                                setPerPage={handlePerPageChange}
+                                disabled={isLoading || isAnySyncing}
+                            />
+
+                            <div className="rounded-md border overflow-x-auto">
+                                <Table className="min-w-[700px]">
+                                    <TableHeader><TableRow>
+                                        <TableHead className="w-12">
+                                            <Checkbox 
+                                                checked={isAllSelected} 
+                                                onCheckedChange={handleSelectAll} 
+                                                disabled={leaderboard.length === 0 || isLoading || isAnySyncing} 
+                                            />
+                                        </TableHead>
+                                        <TableHead className="w-16">Rank</TableHead>
+                                        <TableHead className="cursor-pointer w-[30%]" onClick={() => handleSort('title')}>Application Title & Tags {renderSortArrow('title')}</TableHead>
+                                        {isDetailedView && (<TableHead className="text-center w-[150px] border-l">Score Breakdown</TableHead>)}
+                                        {isChallengeFilterApplicable && (<TableHead className="w-[150px] border-l">Problem Statement</TableHead>)}
+                                        <TableHead className="cursor-pointer text-center w-[100px] border-l" onClick={() => handleSort('total_score')}>Total Score {renderSortArrow('total_score')}</TableHead>
+                                        <TableHead className="w-16 text-center">Actions</TableHead>
+                                    </TableRow></TableHeader>
+                                    <TableBody>
+                                        {isLoading || isAnySyncing ? Array.from({ length: 10 }).map((_, i) => <SkeletonRow key={i} />)
+                                            : error ? <TableRow><TableCell colSpan={6} className="h-24 text-center text-red-500"><AlertCircle className="mx-auto h-6 w-6 mb-2" />{error}</TableCell></TableRow>
+                                                : leaderboard.length > 0 ? leaderboard.map((entry, index) => {
+                                                    const rank = (pagination.currentPage - 1) * pagination.perPage + index + 1;
+                                                    const psCodeDisplay = entry.tags.find(t => availableChallengeStatements.some(cs => cs.tag === t)) || 'N/A';
+                                                    const isSelected = selectedSlugs.includes(entry.slug);
+
+                                                    return (<TableRow key={entry.slug} data-state={isSelected && "selected"}>
+                                                        <TableCell><Checkbox checked={selectedSlugs.includes(entry.slug)} onCheckedChange={(c) => handleSelectRow(entry.slug, !!c)} /></TableCell>
+                                                        
+                                                        <TableCell className="font-bold text-lg">{rank}</TableCell>
+                                                        <TableCell><div>{entry.title}</div><div className="flex flex-wrap gap-1 mt-2">{entry.tags.map(tag => <Badge key={tag} variant="secondary">{tag}</Badge>)}</div></TableCell>
+                                                        
+                                                        {isDetailedView && (
+                                                            <TableCell className="text-center border-l">
+                                                                <TooltipProvider><Tooltip>
+                                                                    <TooltipTrigger asChild>
+                                                                        <ScrollText className='h-4 w-4 mx-auto text-muted-foreground cursor-help' />
+                                                                    </TooltipTrigger>
+                                                                    <TooltipContent>
+                                                                        <p className="font-bold">Breakdown:</p>
+                                                                        {entry.scoreBreakdown.map(c => <div key={c.name}>{c.name}: <span className="font-mono">{renderScore(c)}</span></div>)}
+                                                                    </TooltipContent>
+                                                                </Tooltip></TooltipProvider>
+                                                            </TableCell>
+                                                        )}
+                                                        {isChallengeFilterApplicable && <TableCell className="border-l text-sm"><Badge variant="outline">{psCodeDisplay}</Badge></TableCell>}
+                                                        <TableCell className="text-center border-l">
+                                                            <TooltipProvider><Tooltip>
+                                                                <TooltipTrigger asChild><span className="cursor-help font-semibold text-lg text-green-600">{entry.totalScore.toFixed(2)}</span></TooltipTrigger>
+                                                                {!isDetailedView && (
+                                                                    <TooltipContent>
+                                                                        <p className="font-bold">Breakdown:</p>
+                                                                        {entry.scoreBreakdown.map(c => <div key={c.name}>{c.name}: <span className="font-mono">{renderScore(c)}</span></div>)}
+                                                                    </TooltipContent>
+                                                                )}
+                                                            </Tooltip></TooltipProvider>
+                                                        </TableCell>
+                                                        <TableCell className="text-center"><Button variant="ghost" size="icon" onClick={() => handleViewDetails(entry.slug)}><Eye className="h-4 w-4" /></Button></TableCell>
+                                                    </TableRow>);
+                                                })
+                                                    : <TableRow><TableCell colSpan={6} className="h-24 text-center">No results found for the current filters.</TableCell></TableRow>}
+                                    </TableBody>
+                                </Table>
                             </div>
-                        ))}
-                    </div>
-                    <DialogFooter>
-                        <Button variant="outline" onClick={() => setIsBreakdownModalOpen(false)}>Cancel</Button>
-                        <Button onClick={handleFinalExport} disabled={breakdownsToExport.length === 0}>
-                            Generate PDF ({exportTargetCount} Apps)
-                        </Button>
-                    </DialogFooter>
-                </DialogContent>
-            </Dialog>
+
+                            <ManagerPaginationControls
+                                currentPage={pagination.currentPage}
+                                lastPage={pagination.lastPage}
+                                total={pagination.total}
+                                perPage={pagination.perPage}
+                                changePage={handlePageChange}
+                                setPerPage={handlePerPageChange}
+                                disabled={isLoading || isAnySyncing}
+                            />
+                        </div>
+                    </TabsContent>
+                    <TabsContent value="analytics">
+                        <div className="my-4 p-4 border rounded-lg bg-muted/40">
+                            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5 gap-4 mb-4">
+                                <Input placeholder="Search title..." value={titleSearch} onChange={(e) => setTitleSearch(e.target.value)} className="pl-4" disabled={isAnySyncing} />
+                                <Select value={municipalityFilter} onValueChange={setMunicipalityFilter} disabled={isAnySyncing || municipalities.length === 0}>
+                                    <SelectTrigger><SelectValue placeholder="Filter Municipality" /></SelectTrigger>
+                                    <SelectContent><SelectItem value="all">All Municipalities</SelectItem>{cleanMunicipalities.map(muni => <SelectItem key={muni} value={muni}>{muni}</SelectItem>)}</SelectContent>
+                                </Select>
+                                <Input type="number" placeholder="Min Score" value={minScore} onChange={(e) => setMinScore(e.target.value)} disabled={isAnySyncing} />
+                                <Input type="number" placeholder="Max Score" value={maxScore} onChange={(e) => setMaxScore(e.target.value)} disabled={isAnySyncing} />
+                                <Select value={selectedBreakdown} onValueChange={(v) => setSelectedBreakdown(v as BreakdownKey)} disabled={isAnySyncing || isAnalyticsLoading}>
+                                    <SelectTrigger><SelectValue placeholder="Select Breakdown Dimension" /></SelectTrigger>
+                                    <SelectContent>
+                                        {BREAKDOWN_OPTIONS.map(opt => <SelectItem key={opt.value} value={opt.value}>{opt.label}</SelectItem>)}
+                                    </SelectContent>
+                                </Select>
+                            </div>
+                            {isChallengeFilterApplicable && availableChallengeStatements.length > 0 && (
+                                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5 gap-4">
+                                    {isMultiSelect ? (
+                                        <div className="flex flex-col space-y-1 xl:col-span-full">
+                                            <Label className="text-sm font-medium leading-none">Challenge Statements (Multi-select)</Label>
+                                            <div className="flex flex-wrap gap-2 p-2 border rounded-md bg-white overflow-y-auto max-h-32">
+                                                <Button
+                                                    variant={challengeStatementFilter.length === 0 ? "default" : "outline"}
+                                                    size="sm"
+                                                    onClick={() => setChallengeStatementFilter([])}
+                                                    disabled={isAnySyncing}
+                                                    className='text-xs'
+                                                >
+                                                    All Statements
+                                                </Button>
+                                                {availableChallengeStatements.map(cs => (
+                                                    <Button
+                                                        key={cs.tag}
+                                                        variant={challengeStatementFilter.includes(cs.tag) ? "default" : "outline"}
+                                                        size="sm"
+                                                        onClick={() => handleMultiSelectClick(cs.tag)}
+                                                        disabled={isAnySyncing}
+                                                        className='text-xs'
+                                                    >
+                                                        {cs.tag}
+                                                        </Button>
+                                                    ))}
+                                            </div>
+                                        </div>
+                                    ) : (
+                                        <Select
+                                            value={singlePsValue}
+                                            onValueChange={handleSingleSelectChange}
+                                            disabled={isAnySyncing || availableChallengeStatements.length === 0}
+                                        >
+                                            <SelectTrigger><SelectValue placeholder="Filter Challenge Statement (Single)" /></SelectTrigger>
+                                            <SelectContent>
+                                                <SelectItem value={ALL_STATEMENTS_VALUE}>All Statements</SelectItem>
+                                                {availableChallengeStatements.map(cs => (
+                                                    <SelectItem key={cs.tag} value={cs.tag}>{cs.name}</SelectItem>
+                                                ))}
+                                            </SelectContent>
+                                        </Select>
+                                    )}
+                                    <div className='hidden sm:block' />
+                                    <div className='hidden sm:block' />
+                                    <div className='hidden sm:block' />
+                                </div>
+                            )}
+                        </div>
+                        <SunburstAnalyticsCard
+                            filteredApps={filteredApps}
+                            isLoading={isAnalyticsLoading}
+                            municipalityFilter={debouncedMunicipalityFilter}
+                        />
+                        <ScoreAnalyticsCard
+                            leaderboard={filteredApps as unknown as AnalyticsLeaderboardEntry[]}
+                            municipalityFilter={debouncedMunicipalityFilter}
+                            isLoading={isAnalyticsLoading}
+                            scoreSetName={currentScoreSetNameForDisplay}
+                            filteredApps={filteredApps}
+                            skipScoreDistribution={isScoreFilterApplied}
+                        />
+                        <LeaderboardBreakdowns 
+                            filteredApps={filteredApps} 
+                            isLoading={isAnalyticsLoading} 
+                            selectedBreakdown={selectedBreakdown} 
+                        />
+                    </TabsContent>
+                </Tabs>
+            </CardContent>
+            <ApplicationDetailsInquiryModal isOpen={isModalOpen} onClose={() => setIsModalOpen(false)} applicationSlug={selectedAppSlug} />
+        </Card>
+
+        {/* Breakdown Selection Modal for PDF Export */}
+        <Dialog open={isBreakdownModalOpen} onOpenChange={setIsBreakdownModalOpen}>
+            <DialogContent>
+                <DialogHeader>
+                    <DialogTitle className='flex items-center gap-2'><Settings2 className='h-5 w-5' /> Select PDF Breakdown Tables</DialogTitle>
+                    <DialogDescription>
+                        Choose which breakdown tables you want to include after the main application list in the PDF report.
+                    </DialogDescription>
+                </DialogHeader>
+                <div className='grid grid-cols-2 gap-4 py-4'>
+                    {ALL_BREAKDOWN_KEYS.map((key) => (
+                        <div key={key} className='flex items-center space-x-2'>
+                            <Checkbox
+                                id={key}
+                                checked={breakdownsToExport.includes(key)}
+                                onCheckedChange={(checked) => {
+                                    setBreakdownsToExport(prev => 
+                                        checked ? [...prev, key] : prev.filter(k => k !== key)
+                                    );
+                                }}
+                            />
+                            <label
+                                htmlFor={key}
+                                className="text-sm font-medium leading-none cursor-pointer"
+                            >
+                                {BREAKDOWN_OPTIONS_MAP[key]}
+                            </label>
+                        </div>
+                    ))}
+                </div>
+                <DialogFooter>
+                    <Button variant="outline" onClick={() => setIsBreakdownModalOpen(false)}>Cancel</Button>
+                    <Button onClick={handleFinalExport} disabled={breakdownsToExport.length === 0}>
+                        Generate PDF ({exportTargetCount} Apps)
+                    </Button>
+                </DialogFooter>
+            </DialogContent>
+        </Dialog>
         </>
     );
 }
